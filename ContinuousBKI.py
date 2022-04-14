@@ -11,7 +11,7 @@ from visualization_msgs.msg import *
 from geometry_msgs.msg import Point32
 from std_msgs.msg import ColorRGBA
 
-colors_remap = np.array([
+class_remap = np.array([
     0,
     1,
     2,
@@ -23,28 +23,28 @@ colors_remap = np.array([
     8,
     9,
     10,
-    21, # None
+    0, # None
     11,
-    21,
-    21,
+    0,
+    0,
     12,
-    21,
+    0,
     13,
     14,
     15,
-    21,
-    21,
-    21,
+    0,
+    0,
+    0,
     16,
-    21,
-    21,
-    21,
+    0,
+    0,
+    0,
     17,
-    21,
-    21,
-    21,
+    0,
+    0,
+    0,
     18,
-    21,
+    0,
     19,
     20
 ])
@@ -129,7 +129,8 @@ def publish_voxels(map, pub, centroids, min_dim, max_dim, grid_dims, model="Disc
         point.x = nonfree_centroids[i, 0]
         point.y = nonfree_centroids[i, 1]
         point.z = nonfree_centroids[i, 2]
-        color.r, color.g, color.b = colors[colors_remap[pred]]
+
+        color.r, color.g, color.b = colors[class_remap[pred]]
 
         color.a = 0.75
         marker.points.append(point)
@@ -140,6 +141,16 @@ def publish_voxels(map, pub, centroids, min_dim, max_dim, grid_dims, model="Disc
     pub.publish(next_map)
 
 
+def get_query_neighbors(queries, map):
+    """
+    Performs 3D convolution in a predefined cubic volume,
+    returning K neighbors to each query point provided.
 
+    Input:
+        queries: Nx3 set of query points in new point cloud
+        map: HxWxDx
+    Output:
+        
+    """
 
 
