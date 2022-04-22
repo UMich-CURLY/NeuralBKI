@@ -158,6 +158,18 @@ class Rellis3dDataset(Dataset):
             if self.remap:
                 labels = LABELS_REMAP[labels].astype(np.uint32)
 
+            # Ego vehicle = 0
+            non_void = labels != 0
+            points = points[non_void]
+            labels = labels[non_void]
+
+            # Limit points to grid size
+            valid_point_mask = np.all(
+                (points < self.max_bound) & (points >= self.min_bound), axis=1
+            )
+            points = points[valid_point_mask, :]
+            labels = labels[valid_point_mask]
+
             current_points.append(points)
             current_labels.append(labels)
 

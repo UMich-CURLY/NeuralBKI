@@ -197,14 +197,14 @@ def publish_pc(pc, labels, pub, min_dim,
 
     # Only publish nonfree voxels
     nonfree_mask = labels!=0
-    # pdb.set_trace()
+
     nonfree_points = pc[nonfree_mask]
     nonfree_labels = labels[nonfree_mask].reshape(-1, 1)
 
     # Remove dynamic labels if specified
     if not pub_dynamic:
-        
-        dynamic_mask = np.logical_not(np.in1d(nonfree_labels, DYNAMIC_LABELS))
+        dynamic_labels = torch.from_numpy(DYNAMIC_LABELS).to(pc.device)
+        dynamic_mask = torch.all(torch.ne(nonfree_labels, dynamic_labels), dim=-1)
         nonfree_points = nonfree_points[dynamic_mask]
         nonfree_labels = nonfree_labels[dynamic_mask].reshape(-1)
         
@@ -217,11 +217,6 @@ def publish_pc(pc, labels, pub, min_dim,
     marker.header.frame_id = "map" # change this to match model + scene name LMSC_000001
     marker.type = marker.CUBE_LIST
     marker.action = marker.ADD
-    
-    # if frame == 0:
-    #     marker.action = marker.ADD
-    # else:
-    #     marker.action = marker.MODIFY
     marker.lifetime.secs = 0
     # marker.header.stamp = 0
 
@@ -235,7 +230,7 @@ def publish_pc(pc, labels, pub, min_dim,
     marker.scale.z = (max_dim[2] - min_dim[2]) / grid_dims[2]
     
     for i in range(nonfree_labels.shape[0]):              
-        pred = nonfree_labels[i]
+        pred = nonfree_labels[i].cpu().numpy().astype(np.uint32)
 
         point = Point32()
         color = ColorRGBA()
@@ -251,7 +246,6 @@ def publish_pc(pc, labels, pub, min_dim,
         marker.colors.append(color)
     
     next_map.markers.append(marker)
-
     pub.publish(next_map)
 
 
