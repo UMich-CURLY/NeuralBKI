@@ -14,6 +14,20 @@ from torch.utils.data import Dataset
 
 from Data.utils import *
 
+def unpack(compressed):
+    ''' given a bit encoded voxel grid, make a normal voxel grid out of it.  '''
+    uncompressed = np.zeros(compressed.shape[0] * 8, dtype=np.uint8)
+    uncompressed[::8] = compressed[:] >> 7 & 1
+    uncompressed[1::8] = compressed[:] >> 6 & 1
+    uncompressed[2::8] = compressed[:] >> 5 & 1
+    uncompressed[3::8] = compressed[:] >> 4 & 1
+    uncompressed[4::8] = compressed[:] >> 3 & 1
+    uncompressed[5::8] = compressed[:] >> 2 & 1
+    uncompressed[6::8] = compressed[:] >> 1 & 1
+    uncompressed[7::8] = compressed[:] & 1
+
+    return uncompressed
+
 class Rellis3dDataset(Dataset):
     """Rellis3D Dataset for Neural BKI project
     
@@ -67,6 +81,7 @@ class Rellis3dDataset(Dataset):
         self._label_list = []
         self._pred_list = []
         self._voxel_list = []
+        self._invalid_list = []
         self._frames_list = []
         self._timestamps = []
         self._poses = [] 
@@ -87,6 +102,10 @@ class Rellis3dDataset(Dataset):
             self._voxel_list.extend([os.path.join(voxel_dir, str(5*math.floor(int(frame)/5) ).zfill(6)+'.label') for frame in frames_list])
             self._pred_list.extend([os.path.join(pred_dir, str(frame).zfill(6)+'.bin') \
                 for frame in frames_list])
+            self._invalid_list.extend(
+                [os.path.join(voxel_dir, str(frame).zfill(6)+'.invalid') \
+                for frame in frames_list]
+            )
             self._poses.append(np.loadtxt(os.path.join(self._directory, scene, 'poses.txt')))
 
         # Postprocess poses and predictions file to retrieve every fifth pose 
@@ -102,7 +121,8 @@ class Rellis3dDataset(Dataset):
         output_batch = [bi[0] for bi in data]
         label_batch = [bi[1] for bi in data]
         voxel_batch = [bi[2] for bi in data]
-        return output_batch, label_batch, voxel_batch
+        invalid_batch = [bi[3] for bi in data]
+        return output_batch, label_batch, voxel_batch, invalid_batch
     
     def points_to_voxels(self, voxel_grid, points):
         # Valid voxels (make sure to clip)
@@ -134,6 +154,7 @@ class Rellis3dDataset(Dataset):
             self._voxel_list[idx_range[-1]], dtype=np.uint16
         ).reshape(self.grid_dims.astype(np.int))
         current_voxels = LABELS_REMAP[current_voxels].astype(np.uint32)
+        invalid_voxels = np.zeros_like(current_voxels, dtype=np.uint8)
 
         curr_pose_mat = self._poses[idx_range[-1]].reshape(3, 4)
         curr_pose_rot   = curr_pose_mat[0:3, 0:3].T # Global to current rot R^T
@@ -158,6 +179,10 @@ class Rellis3dDataset(Dataset):
                 else:
                     preds = np.fromfile(self._label_list[i], dtype=np.uint32).reshape((-1))
                 labels = preds & 0xFFFF
+            
+                invalid_voxels = unpack(
+                    np.fromfile(self._invalid_list[i], dtype=np.uint8)
+                ).reshape(self.grid_dims.astype(np.int))
 
             if self.remap:
                 labels = LABELS_REMAP[labels].astype(np.uint32)
@@ -177,7 +202,7 @@ class Rellis3dDataset(Dataset):
             current_points.append(points)
             current_labels.append(labels)
 
-        return current_points, current_labels, current_voxels
+        return current_points, current_labels, current_voxels, invalid_voxels
     
     def find_horizon(self, idx):
         end_idx = idx

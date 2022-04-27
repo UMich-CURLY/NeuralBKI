@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 class DiscreteBKI(torch.nn.Module):
     def __init__(self, grid_size, min_bound, max_bound, filter_size=3,
-                 num_classes=21, prior=0.001, device="cpu",
+                 num_classes=20, prior=0.001, device="cpu",
                 max_dist=0.5):
         '''
         Input:
@@ -77,7 +77,7 @@ class DiscreteBKI(torch.nn.Module):
             
     def initialize_grid(self):
         return torch.zeros(self.grid_size[0], self.grid_size[1], self.grid_size[2], 
-                           self.num_classes, device=self.device) + self.prior
+                           self.num_classes, device=self.device, requires_grad=True) + self.prior
     
     def grid_ind(self, input_pc):
         '''

@@ -77,7 +77,8 @@ colors = np.array([ # RGB
 ]) / 255.0 # normalize each channel [0-1] since is what Open3D uses
 
 def publish_voxels(map, pub, centroids, min_dim, 
-    max_dim, grid_dims, model="DiscreteBKI", pub_dynamic=False):
+    max_dim, grid_dims, model="DiscreteBKI", pub_dynamic=False,
+    valid_voxels_mask=None):
     """
     Publishes voxel map over ros to be visualized in rviz
     Input:
@@ -94,9 +95,9 @@ def publish_voxels(map, pub, centroids, min_dim,
     semantic_map = torch.argmax(map, dim=-1).reshape(-1,)
 
     # Only publish nonfree voxels
-    nonfree_mask = semantic_map!=0
-    nonfree_centroids = centroids[nonfree_mask]
-    nonfree_semantic_map = semantic_map[nonfree_mask].reshape(-1, 1)
+    if valid_voxels_mask!=None:
+        nonfree_centroids = centroids[valid_voxels_mask]
+        nonfree_semantic_map = semantic_map[valid_voxels_mask].reshape(-1, 1)
 
     # Remove dynamic labels if specified
     if not pub_dynamic:
