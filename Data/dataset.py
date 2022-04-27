@@ -3,6 +3,7 @@
 
 import os
 import pdb
+import math
 import numpy as np
 import random
 import json
@@ -65,8 +66,7 @@ class Rellis3dDataset(Dataset):
         self._velodyne_list = []
         self._label_list = []
         self._pred_list = []
-        self._eval_labels = []
-        self._eval_counts = []
+        self._voxel_list = []
         self._frames_list = []
         self._timestamps = []
         self._poses = [] 
@@ -74,14 +74,17 @@ class Rellis3dDataset(Dataset):
         for scene in self._scenes:
             velodyne_dir = os.path.join(self._directory, scene, 'os1_cloud_node_kitti_bin')
             label_dir = os.path.join(self._directory, scene, 'os1_cloud_node_semantickitti_label_id')
+            voxel_dir = os.path.join(self._directory, scene, 'voxels')
             pred_dir = os.path.join(self._directory, scene, 'predictions')
             
             self._num_frames_scene.append(len(os.listdir(velodyne_dir)))
 
             frames_list = [os.path.splitext(filename)[0] for filename in sorted(os.listdir(velodyne_dir))]
+
             self._frames_list.extend(frames_list)
             self._velodyne_list.extend([os.path.join(velodyne_dir, str(frame).zfill(6)+'.bin') for frame in frames_list])
             self._label_list.extend([os.path.join(label_dir, str(frame).zfill(6)+'.label') for frame in frames_list])
+            self._voxel_list.extend([os.path.join(voxel_dir, str(5*math.floor(int(frame)/5) ).zfill(6)+'.label') for frame in frames_list])
             self._pred_list.extend([os.path.join(pred_dir, str(frame).zfill(6)+'.bin') \
                 for frame in frames_list])
             self._poses.append(np.loadtxt(os.path.join(self._directory, scene, 'poses.txt')))
@@ -98,26 +101,22 @@ class Rellis3dDataset(Dataset):
     def collate_fn(self, data):
         output_batch = [bi[0] for bi in data]
         label_batch = [bi[1] for bi in data]
-        return output_batch, label_batch
+        voxel_batch = [bi[2] for bi in data]
+        return output_batch, label_batch, voxel_batch
     
-    # def points_to_voxels(self, voxel_grid, points, t_i):
-    #     # Valid voxels (make sure to clip)
-    #     valid_point_mask= np.all(
-    #         (points < self.max_bound) & (points >= self.min_bound), axis=1)
-    #     valid_points = points[valid_point_mask, :]
-    #     voxels = np.floor((valid_points - self.min_bound) / self.voxel_sizes).astype(np.int)
-    #     # Clamp to account for any floating point errors
-    #     maxes = np.reshape(self.grid_dims - 1, (1, 3))
-    #     mins = np.zeros_like(maxes)
-    #     voxels = np.clip(voxels, mins, maxes).astype(np.int)
-    #     # This line is needed to create a mask with number of points, not just binary occupied
-    #     if self.binary_counts:
-    #          voxel_grid[t_i, voxels[:, 0], voxels[:, 1], voxels[:, 2]] += 1
-    #     else:
-    #         unique_voxels, counts = np.unique(voxels, return_counts=True, axis=0)
-    #         unique_voxels = unique_voxels.astype(np.int)
-    #         voxel_grid[t_i, unique_voxels[:, 0], unique_voxels[:, 1], unique_voxels[:, 2]] += counts
-    #     return voxel_grid
+    def points_to_voxels(self, voxel_grid, points):
+        # Valid voxels (make sure to clip)
+        valid_point_mask= np.all(
+            (points < self.max_bound) & (points >= self.min_bound), axis=1)
+        valid_points = points[valid_point_mask, :]
+        voxels = np.floor((valid_points - self.min_bound) / self.voxel_sizes).astype(np.int)
+        # Clamp to account for any floating point errors
+        maxes = np.reshape(self.grid_dims - 1, (1, 3))
+        mins = np.zeros_like(maxes)
+        voxels = np.clip(voxels, mins, maxes).astype(np.int)
+
+        voxel_grid = voxel_grid[voxels[:, 0], voxels[:, 1], voxels[:, 2]]
+        return voxel_grid
 
     def get_file_path(self, idx):
         print(self._frames_list[idx])
@@ -130,7 +129,12 @@ class Rellis3dDataset(Dataset):
          
         current_points = []
         current_labels = []
-        
+
+        current_voxels = np.fromfile(
+            self._voxel_list[idx_range[-1]], dtype=np.uint16
+        ).reshape(self.grid_dims.astype(np.int))
+        current_voxels = LABELS_REMAP[current_voxels].astype(np.uint32)
+
         curr_pose_mat = self._poses[idx_range[-1]].reshape(3, 4)
         curr_pose_rot   = curr_pose_mat[0:3, 0:3].T # Global to current rot R^T
         curr_pose_trans = -curr_pose_rot @ curr_pose_mat[:, 3] # Global to current trans (-R^T * t)
@@ -173,7 +177,7 @@ class Rellis3dDataset(Dataset):
             current_points.append(points)
             current_labels.append(labels)
 
-        return current_points, current_labels
+        return current_points, current_labels, current_voxels
     
     def find_horizon(self, idx):
         end_idx = idx
@@ -183,7 +187,5 @@ class Rellis3dDataset(Dataset):
         good_diffs = -1 * (np.arange(-self._num_frames, 0) + 1)
         # print("idx range ", idx_range)
         idx_range[good_diffs != diffs] = -1
-        # print("diffs ", diffs)
-        # print("good diffs ", good_diffs)
-        # print("idx range new ", idx_range)
+
         return idx_range

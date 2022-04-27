@@ -53,31 +53,6 @@ DYNAMIC_LABELS = np.array([
     7, 12
 ])
 
-
-# Classes for RELLIS3d
-# colors = np.array([ # BGR
-#     (0,0,0),        #void
-#     (108, 64, 20),  #dirt
-#     (0,102,0),      #grass
-#     (0,255,0),      #tree
-#     (0,153,153),    #pole
-#     (0,128,255),    #water
-#     (0,0,255),      #sky    
-#     (255,255,0),    #vehicle
-#     (255,0,127),    #object
-#     (64,64,64),     #asphalt
-#     (255,0,0),      #building
-#     (102,0,0),      #log
-#     (204,153,255),  #person
-#     (102, 0, 204),  #fence
-#     (255,153,204),  #bush
-#     (170,170,170),  #concrete
-#     (41,121,255),   #barrier
-#     (134,255,239),  #puddle
-#     (99,66,34),     #mud
-#     (110,22,138),   #rubble
-#     (255, 255, 255) # unknown
-# ]) / 255.0 # normalize each channel [0-1] since is what Open3D uses
 colors = np.array([ # RGB
     (0,0,0),        #0void
     (108, 64, 20),  #1dirt
@@ -101,16 +76,15 @@ colors = np.array([ # RGB
     (110,22,138)   #19rubble
 ]) / 255.0 # normalize each channel [0-1] since is what Open3D uses
 
-def publish_voxels(map, pub, points, min_dim, 
+def publish_voxels(map, pub, centroids, min_dim, 
     max_dim, grid_dims, model="DiscreteBKI", pub_dynamic=False):
     """
     Publishes voxel map over ros to be visualized in rviz
-
     Input:
         map: HxWxDxC voxel map where H=height, W=width,
             D=depth, C=num_classes 
         pub: rospy publisher handle
-        points: H*W*Dx2 indices from points of map
+        centroids: H*W*Dx2 indices from centroids of voxel map
         min_dim: 3x1 minimum dimensions in xyz
         max_dim 3x1 maximum dimensions in xyz
         grid_dims: 3x1 voxel grid resolution in xyz
@@ -121,17 +95,22 @@ def publish_voxels(map, pub, points, min_dim,
 
     # Only publish nonfree voxels
     nonfree_mask = semantic_map!=0
-    nonfree_points = points[nonfree_mask]
+    nonfree_centroids = centroids[nonfree_mask]
     nonfree_semantic_map = semantic_map[nonfree_mask].reshape(-1, 1)
 
     # Remove dynamic labels if specified
     if not pub_dynamic:
-        dynamic_class = torch.tensor(DYNAMIC_LABELS, device=semantic_map.device).reshape(1, -1)
-        
+        dynamic_class = torch.tensor([
+            0,
+            7,
+            8,
+            12
+        ], device=semantic_map.device).reshape(1, -1)
+
         dynamic_mask = torch.all(
             nonfree_semantic_map.ne(dynamic_class), dim=-1
         )
-        nonfree_points = nonfree_points[dynamic_mask]
+        nonfree_centroids = nonfree_centroids[dynamic_mask]
         nonfree_semantic_map = nonfree_semantic_map[dynamic_mask]
         
 
@@ -165,9 +144,9 @@ def publish_voxels(map, pub, points, min_dim,
 
         point = Point32()
         color = ColorRGBA()
-        point.x = nonfree_points[i, 0]
-        point.y = nonfree_points[i, 1]
-        point.z = nonfree_points[i, 2]
+        point.x = nonfree_centroids[i, 0]
+        point.y = nonfree_centroids[i, 1]
+        point.z = nonfree_centroids[i, 2]
 
         color.r, color.g, color.b = colors[pred]
 
@@ -178,6 +157,7 @@ def publish_voxels(map, pub, points, min_dim,
     next_map.markers.append(marker)
 
     pub.publish(next_map)
+
 
 def publish_pc(pc, labels, pub, min_dim, 
     max_dim, grid_dims, model="DiscreteBKI", pub_dynamic=False):
