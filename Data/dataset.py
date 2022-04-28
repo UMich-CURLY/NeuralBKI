@@ -12,6 +12,7 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset
 
+from scipy.spatial.transform import Rotation as R
 from Data.utils import *
 
 def unpack(compressed):
@@ -40,6 +41,7 @@ class Rellis3dDataset(Dataset):
         voxelize_input=False,
         remap=True,
         use_gt=True,
+        use_aug=True,
         apply_transform=True
         ):
         '''Constructor.
@@ -53,6 +55,7 @@ class Rellis3dDataset(Dataset):
         self.device = device
         self.remap = remap
         self.use_gt = use_gt
+        self.use_aug = use_aug
         self.apply_transform = apply_transform
         
         self._scenes = sorted(os.listdir(self._directory))
@@ -140,6 +143,43 @@ class Rellis3dDataset(Dataset):
 
     def get_file_path(self, idx):
         print(self._frames_list[idx])
+
+    def get_aug_matrix(self, trans):
+        """
+            trans - 1 or 2 specifies reflection about XZ or YZ plane
+                    any other value gives rotation matrix
+                    Double checked with rotation matrix calculator
+        """
+        if trans==1:
+            trans = np.eye(3)
+            trans[1][1] = -1
+        elif trans==2:
+            trans = np.eye(3)
+            trans[0][0] = -1
+        else:
+            if trans==0:
+                angle = 0
+            else:
+                angle = (trans-2)*90
+            trans = R.from_euler('z', angle, degrees=True).as_matrix()
+
+        return trans
+
+    def get_voxel_aug(self, t, state):
+        if state == 1:
+            aug_t = np.flip(t, [0]) # XZ
+        elif state == 2:
+            aug_t = np.flip(t, [1]) # YZ
+        elif state == 3:
+            aug_t = np.rot90(t, 1, [0, 1])
+        elif state == 4:
+            aug_t = np.rot90(t, 2, [0, 1])
+        elif state == 5:
+            aug_t = np.rot90(t, 3, [0, 1])
+        else:
+            aug_t = t
+
+        return aug_t
     
     def __getitem__(self, idx):
         # -1 indicates no data
@@ -150,15 +190,19 @@ class Rellis3dDataset(Dataset):
         current_points = []
         current_labels = []
 
-        current_voxels = np.fromfile(
+        voxels = np.fromfile(
             self._voxel_list[idx_range[-1]], dtype=np.uint16
         ).reshape(self.grid_dims.astype(np.int))
-        current_voxels = LABELS_REMAP[current_voxels].astype(np.uint32)
-        invalid_voxels = np.zeros_like(current_voxels, dtype=np.uint8)
+        voxels = LABELS_REMAP[voxels].astype(np.uint32)
+        invalid_voxels = np.zeros_like(voxels, dtype=np.uint8)
 
         curr_pose_mat = self._poses[idx_range[-1]].reshape(3, 4)
         curr_pose_rot   = curr_pose_mat[0:3, 0:3].T # Global to current rot R^T
         curr_pose_trans = -curr_pose_rot @ curr_pose_mat[:, 3] # Global to current trans (-R^T * t)
+        
+        aug_index = np.random.randint(0,6)
+
+        aug_mat = self.get_aug_matrix(aug_index)
         for i in idx_range:
             if i == -1: # Zero pad
                 points = np.zeros((1, 3), dtype=np.float32)
@@ -173,16 +217,16 @@ class Rellis3dDataset(Dataset):
                     # pdb.set_trace()
                     points_in_global = ((prev_pose_rot @ points.T).T + prev_pose_trans)
                     points = (curr_pose_rot @ points_in_global.T).T + curr_pose_trans
-
                 if not self.use_gt:
                     preds = np.fromfile(self._pred_list[i], dtype=np.uint32).reshape((-1))
                 else:
                     preds = np.fromfile(self._label_list[i], dtype=np.uint32).reshape((-1))
                 labels = preds & 0xFFFF
             
-                invalid_voxels = unpack(
+                current_invalid_voxels = unpack(
                     np.fromfile(self._invalid_list[i], dtype=np.uint8)
                 ).reshape(self.grid_dims.astype(np.int))
+                invalid_voxels = invalid_voxels | current_invalid_voxels
 
             if self.remap:
                 labels = LABELS_REMAP[labels].astype(np.uint32)
@@ -199,10 +243,20 @@ class Rellis3dDataset(Dataset):
             points = points[valid_point_mask, :]
             labels = labels[valid_point_mask]
 
+            # Perform data augmentation
+            if self.use_aug:  
+                points = (aug_mat @ points.T).T
+
+            # Save augmentation to avoid duplicating voxel data
             current_points.append(points)
             current_labels.append(labels)
 
-        return current_points, current_labels, current_voxels, invalid_voxels
+        # Align voxels with augmented pointss
+        if self.use_aug:
+            voxels = self.get_voxel_aug(voxels, aug_index)
+            invalid_voxels = self.get_voxel_aug(invalid_voxels, aug_index)
+
+        return current_points, current_labels, voxels, invalid_voxels
     
     def find_horizon(self, idx):
         end_idx = idx

@@ -108,8 +108,9 @@ def publish_voxels(map, pub, centroids, min_dim,
         )
         centroids = centroids[dynamic_mask]
         semantic_map = semantic_map[dynamic_mask]
+        valid_voxels_mask = valid_voxels_mask[dynamic_mask]
         
-        # Only publish nonfree voxels
+    # Only publish nonfree voxels
     if valid_voxels_mask!=None:
         masked_centroids = centroids[valid_voxels_mask]
         masked_semantic_map = semantic_map[valid_voxels_mask].reshape(-1, 1)
@@ -139,14 +140,14 @@ def publish_voxels(map, pub, centroids, min_dim,
     marker.scale.y = (max_dim[1] - min_dim[1]) / grid_dims[1]
     marker.scale.z = (max_dim[2] - min_dim[2]) / grid_dims[2]
     
-    for i in range(semantic_map.shape[0]):              
-        pred = semantic_map[i]
+    for i in range(masked_semantic_map.shape[0]):              
+        pred = masked_semantic_map[i]
 
         point = Point32()
         color = ColorRGBA()
-        point.x = centroids[i, 0]
-        point.y = centroids[i, 1]
-        point.z = centroids[i, 2]
+        point.x = masked_centroids[i, 0]
+        point.y = masked_centroids[i, 1]
+        point.z = masked_centroids[i, 2]
 
         color.r, color.g, color.b = colors[pred]
 

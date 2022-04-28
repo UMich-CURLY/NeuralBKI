@@ -63,7 +63,6 @@ class DiscreteBKI(torch.nn.Module):
     def inverse_sigmoid(self, x):
         return -torch.log((1 / (x + 1e-8)) - 1)
             
-            
     def calculate_kernel(self, d):
         if d > self.max_dist:
             return torch.tensor(0.0, device=self.device)
