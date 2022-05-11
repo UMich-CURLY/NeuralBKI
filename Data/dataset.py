@@ -42,7 +42,8 @@ class Rellis3dDataset(Dataset):
         remap=True,
         use_gt=True,
         use_aug=True,
-        apply_transform=True
+        apply_transform=True,
+        model_name="salsa"
         ):
         '''Constructor.
         Parameters:
@@ -58,12 +59,12 @@ class Rellis3dDataset(Dataset):
         self.use_aug = use_aug
         self.apply_transform = apply_transform
         
-        self._scenes = sorted(os.listdir(self._directory))
-
+        self._scenes = [ s for s in sorted(os.listdir(self._directory)) if s.isdigit() ]
+ 
         self._num_scenes = len(self._scenes)
         self._num_frames_scene = []
 
-        param_file = os.path.join(self._directory, self._scenes[0], 'params.json')
+        param_file = os.path.join(self._directory, self._scenes[4], 'params.json')
         with open(param_file) as f:
             self._eval_param = json.load(f)
         
@@ -89,11 +90,13 @@ class Rellis3dDataset(Dataset):
         self._timestamps = []
         self._poses = [] 
 
-        for scene in self._scenes:
+        # for scene in self._scenes:
+        for i in range(0, 1):
+            scene = self._scenes[-1]
             velodyne_dir = os.path.join(self._directory, scene, 'os1_cloud_node_kitti_bin')
             label_dir = os.path.join(self._directory, scene, 'os1_cloud_node_semantickitti_label_id')
             voxel_dir = os.path.join(self._directory, scene, 'voxels')
-            pred_dir = os.path.join(self._directory, scene, 'predictions')
+            pred_dir = os.path.join(self._directory, scene, model_name, 'os1_cloud_node_semantickitti_label_id')
             
             self._num_frames_scene.append(len(os.listdir(velodyne_dir)))
 
@@ -102,8 +105,8 @@ class Rellis3dDataset(Dataset):
             self._frames_list.extend(frames_list)
             self._velodyne_list.extend([os.path.join(velodyne_dir, str(frame).zfill(6)+'.bin') for frame in frames_list])
             self._label_list.extend([os.path.join(label_dir, str(frame).zfill(6)+'.label') for frame in frames_list])
-            self._voxel_list.extend([os.path.join(voxel_dir, str(5*math.floor(int(frame)/5) ).zfill(6)+'.label') for frame in frames_list])
-            self._pred_list.extend([os.path.join(pred_dir, str(frame).zfill(6)+'.bin') \
+            self._voxel_list.extend([os.path.join(voxel_dir, str(frame).zfill(6)+'.label') for frame in frames_list])
+            self._pred_list.extend([os.path.join(pred_dir, str(frame).zfill(6)+'.label') \
                 for frame in frames_list])
             self._invalid_list.extend(
                 [os.path.join(voxel_dir, str(frame).zfill(6)+'.invalid') \
@@ -111,7 +114,6 @@ class Rellis3dDataset(Dataset):
             )
             self._poses.append(np.loadtxt(os.path.join(self._directory, scene, 'poses.txt')))
 
-        # Postprocess poses and predictions file to retrieve every fifth pose 
         self._poses = np.array(self._poses).reshape(-1, 12)
         
         self._cum_num_frames = np.cumsum(np.array(self._num_frames_scene) - self._num_frames + 1)
@@ -222,6 +224,9 @@ class Rellis3dDataset(Dataset):
                 else:
                     preds = np.fromfile(self._label_list[i], dtype=np.uint32).reshape((-1))
                 labels = preds & 0xFFFF
+
+                gt = np.fromfile(self._pred_list[i], dtype=np.uint32).reshape((-1))
+                # print("Accuracy ", np.sum(gt==preds) / gt.shape[0])
             
                 current_invalid_voxels = unpack(
                     np.fromfile(self._invalid_list[i], dtype=np.uint8)

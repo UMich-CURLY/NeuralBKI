@@ -115,9 +115,10 @@ class DiscreteBKI(torch.nn.Module):
         # 1: Discretize
         grid_pc = self.grid_ind(point_cloud).to(torch.long)
        
-        unique_inds, counts = torch.unique(grid_pc, return_counts=True, dim=0)  
+        unique_inds, counts = torch.unique(grid_pc, return_counts=True, dim=0)
+  
         grid_indices = [unique_inds[:, i] for i in range(grid_pc.shape[1])]
-        
+
         update[grid_indices] = update[grid_indices] + counts
         
         # 2: Apply BKI filters
