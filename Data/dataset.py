@@ -188,7 +188,7 @@ class Rellis3dDataset(Dataset):
         # print("idx ", idx)
         # the final index is the output
         idx_range = self.find_horizon(idx)
-         
+
         current_points = []
         current_labels = []
 
@@ -225,14 +225,13 @@ class Rellis3dDataset(Dataset):
                     preds = np.fromfile(self._label_list[i], dtype=np.uint32).reshape((-1))
                 labels = preds & 0xFFFF
 
-                gt = np.fromfile(self._pred_list[i], dtype=np.uint32).reshape((-1))
+                # gt = np.fromfile(self._pred_list[i], dtype=np.uint32).reshape((-1))
                 # print("Accuracy ", np.sum(gt==preds) / gt.shape[0])
             
                 current_invalid_voxels = unpack(
                     np.fromfile(self._invalid_list[i], dtype=np.uint8)
                 ).reshape(self.grid_dims.astype(np.int))
                 invalid_voxels = invalid_voxels | current_invalid_voxels
-
             if self.remap:
                 labels = LABELS_REMAP[labels].astype(np.uint32)
 
@@ -246,7 +245,7 @@ class Rellis3dDataset(Dataset):
                 (points < self.max_bound) & (points >= self.min_bound), axis=1
             )
             points = points[valid_point_mask, :]
-            labels = labels[valid_point_mask]
+            labels = labels[valid_point_mask].reshape(-1, 1)
 
             # Perform data augmentation
             if self.use_aug:  

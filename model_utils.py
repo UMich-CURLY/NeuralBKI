@@ -3,8 +3,7 @@ import torch
 import random
 import numpy as np
 
-from Models.DiscreteBKI import *
-
+from Models.DiscreteBKI import DiscreteBKI
 
 CLASS_COUNTS_REMAPPED = np.array([
     447156890,
@@ -52,7 +51,7 @@ def setup_seed(seed=42):
 def get_model(model_name, grid_params, device):
     # Model parameters
     if model_name == "DiscreteBKI":
-        B = 10
+        B = 8
         model = DiscreteBKI(
             torch.tensor(grid_params['grid_size'], dtype=torch.long).to(device), # Grid size
             torch.tensor(grid_params['min_bound']).to(device), # Lower bound

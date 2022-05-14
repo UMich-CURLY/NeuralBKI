@@ -1,8 +1,10 @@
 import pdb
 import os
+
 import torch
 torch.backends.cudnn.deterministic = True
 import torch.nn.functional as F
+from Models.BKIConvFilter import BKIConvFilter
 
 class DiscreteBKI(torch.nn.Module):
     def __init__(self, grid_size, min_bound, max_bound, filter_size=3,
@@ -27,7 +29,9 @@ class DiscreteBKI(torch.nn.Module):
         
         self.pi = torch.acos(torch.zeros(1)).item() * 2
         self.max_dist = max_dist
-        self.filter_size = torch.tensor(filter_size).to(self.device)
+        self.filter_size = torch.tensor(filter_size, dtype=torch.long, requires_grad=False, device=self.device)
+
+        self.bki_conv_filter = BKIConvFilter.apply
         self.initialize_kernel()
         
         [xs, ys, zs] = [(max_bound[i]-min_bound[i])/(2*grid_size[i]) + 
@@ -58,8 +62,11 @@ class DiscreteBKI(torch.nn.Module):
                     else:
                         weight = self.inverse_sigmoid(kernel_value)
                         weights.append(torch.nn.Parameter(weight))
-        self.weights = weights
-                    
+
+        weights = torch.tensor(weights, dtype=torch.float, device=self.device).view(
+            1, 1, self.filter_size, self.filter_size, self.filter_size)
+        self.weights = torch.nn.Parameter(weights)
+
     def inverse_sigmoid(self, x):
         return -torch.log((1 / (x + 1e-8)) - 1)
             
@@ -110,7 +117,7 @@ class DiscreteBKI(torch.nn.Module):
         '''
         # Assume map and point cloud are already aligned
         X, Y, Z, C = current_map.shape
-        update = torch.zeros_like(current_map)
+        update = torch.zeros_like(current_map, requires_grad=False)
         
         # 1: Discretize
         grid_pc = self.grid_ind(point_cloud).to(torch.long)
@@ -122,15 +129,17 @@ class DiscreteBKI(torch.nn.Module):
         update[grid_indices] = update[grid_indices] + counts
         
         # 2: Apply BKI filters
-        filters = torch.sigmoid(torch.tensor(self.weights, device=self.device)).view(
-            1, 1, self.filter_size, self.filter_size, self.filter_size)
+        # filters = torch.sigmoid(
+        #     self.weights
+        # )
         mid = torch.floor(self.filter_size / 2).to(torch.long)
-        filters[0, 0, mid, mid, mid] = 1
-        
+        filters = self.bki_conv_filter(self.weights, mid)
+
+        # filters[0, 0, mid, mid, mid] = 1
         update = torch.unsqueeze(update.permute(3, 0, 1, 2), 1)
         update = F.conv3d(update, filters, padding="same")
-        update = torch.squeeze(update).permute(1, 2, 3, 0)
+        new_update = torch.squeeze(update).permute(1, 2, 3, 0)
         
-        return current_map + update
+        return current_map + new_update
     
     # def propagate(self, current_map, transformation)
