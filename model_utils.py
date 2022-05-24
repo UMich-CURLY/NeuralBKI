@@ -6,30 +6,31 @@ import numpy as np
 from Models.DiscreteBKI import DiscreteBKI
 
 CLASS_COUNTS_REMAPPED = np.array([
-    447156890,
+    1383905769,          
+    0,   
+    36468957,    
+    5806508,          
+    0,          
     0,
-    261005182,
-    107172982,
-    22852,
-    224173,
-    0,
-    111345,
-    2,
-    479,
-    10,
-    554091,
-    10626325,
-    1588416,
-    168764964,
-    10944799,
-    3502156,
-    1493276,
-    5798200,
-    3395458,
+    0,          
+    0,          
+    0,          
+    0,          
+    0,      
+    43620,
+    0,          
+    0,   
+    12535994,     
+    225628,     
+    171253,     
+    150940,
+    971950,     
+    533104,  
+    718204261
 ], dtype=np.long)
 
 # Intersection, union for one frame
-def iou_one_frame(pred, target, n_classes=20):
+def iou_one_frame(pred, target, n_classes=21):
     pred = pred.view(-1)
     target = target.view(-1)
     intersection = np.zeros(n_classes)
@@ -51,12 +52,13 @@ def setup_seed(seed=42):
 def get_model(model_name, grid_params, device):
     # Model parameters
     if model_name == "DiscreteBKI":
-        B = 8
+        B = 2
         model = DiscreteBKI(
             torch.tensor(grid_params['grid_size'], dtype=torch.long).to(device), # Grid size
             torch.tensor(grid_params['min_bound']).to(device), # Lower bound
             torch.tensor(grid_params['max_bound']).to(device), # Upper bound
-            device=device
+            device=device,
+            datatype=torch.float32
         )
         model.initialize_kernel()
         decayRate = 0.96

@@ -46,8 +46,14 @@ LABELS_REMAP = np.array([
     17, #puddle
     0,
     18, #mud
-    19  #rubble
-])
+    19, #34rubble
+    0,
+    0,
+    0,
+    0,
+    0,
+    20  #free space (Added in later)
+], dtype=np.uint8)
 
 DYNAMIC_LABELS = np.array([
     7, 12
@@ -73,7 +79,8 @@ colors = np.array([ # RGB
     (41,121,255),   #16barrier
     (134,255,239),  #17puddle
     (99,66,34),     #18mud
-    (110,22,138)   #19rubble
+    (110,22,138),   #19rubble
+    (255,255,255)   #20freespace
 ]) / 255.0 # normalize each channel [0-1] since is what Open3D uses
 
 def publish_voxels(map, pub, centroids, min_dim, 
@@ -100,7 +107,8 @@ def publish_voxels(map, pub, centroids, min_dim,
             0,
             7,
             8,
-            12
+            12,
+            20
         ], device=semantic_map.device).reshape(1, -1)
 
         dynamic_mask = torch.all(
@@ -179,7 +187,7 @@ def publish_pc(pc, labels, pub, min_dim,
     """
 
     # Only publish nonfree voxels
-    nonfree_mask = labels!=0
+    nonfree_mask = labels!=LABELS_REMAP[0] & labels!=LABELS_REMAP[-1]
 
     nonfree_points = pc[nonfree_mask]
     nonfree_labels = labels[nonfree_mask].reshape(-1, 1)

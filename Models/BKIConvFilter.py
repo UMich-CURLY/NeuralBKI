@@ -17,7 +17,7 @@ class BKIConvFilter(torch.autograd.Function):
         @param weights  - B x C x X x Y Z 
         """
         ctx.save_for_backward(weights, mid)
-        filters = torch.sigmoid(weights)
+        filters = torch.sigmoid(weights).type(dtype=weights.dtype)
         filters[0, 0, mid, mid, mid] = 1
         return filters
 

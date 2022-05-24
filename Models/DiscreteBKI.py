@@ -8,7 +8,7 @@ from Models.BKIConvFilter import BKIConvFilter
 
 class DiscreteBKI(torch.nn.Module):
     def __init__(self, grid_size, min_bound, max_bound, filter_size=3,
-                 num_classes=20, prior=0.001, device="cpu",
+                 num_classes=21, prior=0.001, device="cpu", datatype=torch.float32,
                 max_dist=0.5):
         '''
         Input:
@@ -20,6 +20,7 @@ class DiscreteBKI(torch.nn.Module):
         self.min_bound = min_bound.view(-1, 3).to(device)
         self.max_bound = max_bound.view(-1, 3).to(device)
         self.grid_size = grid_size
+        self.dtype = datatype
         self.prior = prior
 
         self.device = device
@@ -63,8 +64,9 @@ class DiscreteBKI(torch.nn.Module):
                         weight = self.inverse_sigmoid(kernel_value)
                         weights.append(torch.nn.Parameter(weight))
 
-        weights = torch.tensor(weights, dtype=torch.float, device=self.device).view(
+        weights = torch.tensor(weights, dtype=self.dtype, device=self.device).view(
             1, 1, self.filter_size, self.filter_size, self.filter_size)
+
         self.weights = torch.nn.Parameter(weights)
 
     def inverse_sigmoid(self, x):
@@ -83,7 +85,8 @@ class DiscreteBKI(torch.nn.Module):
             
     def initialize_grid(self):
         return torch.zeros(self.grid_size[0], self.grid_size[1], self.grid_size[2], 
-                           self.num_classes, device=self.device, requires_grad=True) + self.prior
+                           self.num_classes, device=self.device, requires_grad=True,
+                           dtype=self.dtype) + self.prior
     
     def grid_ind(self, input_pc):
         '''
@@ -123,9 +126,9 @@ class DiscreteBKI(torch.nn.Module):
         grid_pc = self.grid_ind(point_cloud).to(torch.long)
        
         unique_inds, counts = torch.unique(grid_pc, return_counts=True, dim=0)
-  
-        grid_indices = [unique_inds[:, i] for i in range(grid_pc.shape[1])]
+        counts = counts.type(torch.long)
 
+        grid_indices = [unique_inds[:, i] for i in range(grid_pc.shape[1])]
         update[grid_indices] = update[grid_indices] + counts
         
         # 2: Apply BKI filters
@@ -134,7 +137,7 @@ class DiscreteBKI(torch.nn.Module):
         # )
         mid = torch.floor(self.filter_size / 2).to(torch.long)
         filters = self.bki_conv_filter(self.weights, mid)
-
+  
         # filters[0, 0, mid, mid, mid] = 1
         update = torch.unsqueeze(update.permute(3, 0, 1, 2), 1)
         update = F.conv3d(update, filters, padding="same")
