@@ -56,7 +56,7 @@ LABELS_REMAP = np.array([
 ], dtype=np.uint8)
 
 DYNAMIC_LABELS = np.array([
-    7, 12
+    0, 7, 8, 12
 ])
 
 colors = np.array([ # RGB
@@ -98,8 +98,14 @@ def publish_voxels(map, pub, centroids, min_dim,
         grid_dims: 3x1 voxel grid resolution in xyz
         model: name of model used (Default: DiscreteBKI)
     """
-    
-    semantic_map = torch.argmax(map, dim=-1).reshape(-1, 1)
+    if map.dim()==4:
+        semantic_map = torch.argmax(map / torch.sum(map, dim=-1, keepdim=True), dim=-1, keepdim=True)
+        semantic_map = semantic_map.reshape(-1, 1)
+    else:
+        semantic_map = map.reshape(-1, 1)
+
+    if valid_voxels_mask!=None:
+        valid_voxels_mask = valid_voxels_mask.reshape(-1)
 
     # Remove dynamic labels if specified
     if not pub_dynamic:
@@ -116,7 +122,7 @@ def publish_voxels(map, pub, centroids, min_dim,
         )
         centroids = centroids[dynamic_mask]
         semantic_map = semantic_map[dynamic_mask]
-
+  
         if valid_voxels_mask!=None:
             valid_voxels_mask = valid_voxels_mask[dynamic_mask]
         

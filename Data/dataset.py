@@ -79,7 +79,8 @@ class Rellis3dDataset(Dataset):
         use_gt=True,
         use_aug=True,
         apply_transform=True,
-        model_name="salsa"
+        model_name="salsa",
+        model_setting="train"
         ):
         '''Constructor.
         Parameters:
@@ -98,7 +99,7 @@ class Rellis3dDataset(Dataset):
         self._scenes = [ s for s in sorted(os.listdir(self._directory)) if s.isdigit() ]
  
         self._num_scenes = len(self._scenes)
-        self._num_frames_scene = []
+        self._num_frames_scene = 0
         self._num_labels = LABELS_REMAP.shape[0]
 
         param_file = os.path.join(self._directory, self._scenes[4], 'params.json')
@@ -126,43 +127,63 @@ class Rellis3dDataset(Dataset):
         self._invalid_list = []
         self._frames_list = []
         self._timestamps = []
-        self._poses = [] 
+        self._poses = []
+        self._num_frames_by_scene = []
 
-        # for scene in self._scenes:
-        for i in range(0, 1):
-            scene = self._scenes[-1]
-            velodyne_dir = os.path.join(self._directory, scene, 'os1_cloud_node_kitti_bin')
-            label_dir = os.path.join(self._directory, scene, 'os1_cloud_node_semantickitti_label_id')
-            voxel_dir = os.path.join(self._directory, scene, 'voxels')
-            pred_dir = os.path.join(self._directory, scene, model_name, 'os1_cloud_node_semantickitti_label_id')
-            
-            self._num_frames_scene.append(len(os.listdir(velodyne_dir)))
+        split_dir = os.path.join(self._directory, "pt_"+model_setting+".lst")
 
-            frames_list = [os.path.splitext(filename)[0] for filename in sorted(os.listdir(velodyne_dir))]
+        # Generate list of scenes and indices to iterate over
+        self._scenes_list = []
+        self._index_list = []
 
-            self._frames_list.extend(frames_list)
-            self._velodyne_list.extend([os.path.join(velodyne_dir, str(frame).zfill(6)+'.bin') for frame in frames_list])
-            self._label_list.extend([os.path.join(label_dir, str(frame).zfill(6)+'.label') for frame in frames_list])
-            self._voxel_label_list.extend([os.path.join(voxel_dir, str(frame).zfill(6)+'.label') for frame in frames_list])
-            self._pred_list.extend([os.path.join(pred_dir, str(frame).zfill(6)+'.label') \
-                for frame in frames_list])
-            self._occupied_list.extend(
-                [os.path.join(voxel_dir, str(frame).zfill(6)+'.bin') \
-                for frame in frames_list]
-            )
-            self._invalid_list.extend(
-                [os.path.join(voxel_dir, str(frame).zfill(6)+'.invalid') \
-                for frame in frames_list]
-            )
-            self._poses.append(np.loadtxt(os.path.join(self._directory, scene, 'poses.txt')))
-
-        self._poses = np.array(self._poses).reshape(-1, 12)
+        with open(split_dir, 'r') as split_file:
+            for line in split_file:
+                image_path = line.split(' ')
+                image_path_lst = image_path[0].split('/')
+                scene_num = image_path_lst[0]
+                frame_index = int(image_path_lst[2][0:6])
+                self._scenes_list.append(scene_num)
+                self._index_list.append(frame_index)
         
-        self._cum_num_frames = np.cumsum(np.array(self._num_frames_scene) - self._num_frames + 1)
+
+        # pdb.set_trace()
+        for i in range(self._num_scenes):
+            scene_name = self._scenes_list[i]
+            frame_id = self._index_list[i]
+
+            velodyne_dir = os.path.join(self._directory, scene_name, 'os1_cloud_node_kitti_bin')
+            label_dir = os.path.join(self._directory, scene_name, 'os1_cloud_node_semantickitti_label_id')
+            voxel_dir = os.path.join(self._directory, scene_name, 'voxels')
+            pred_dir = os.path.join(self._directory, scene_name, model_name, 'os1_cloud_node_semantickitti_label_id')
+            
+            # Load all poses and frame indices regardless of mode
+            scene_id = int(scene_name)
+            self._poses.append( np.loadtxt(os.path.join(self._directory, scene_name, 'poses.txt')).reshape(-1, 12) )
+            self._frames_list.append([ \
+                os.path.splitext(filename)[0] for filename in sorted(os.listdir(velodyne_dir))])
+            self._num_frames_by_scene.append(len(self._frames_list[scene_id]))
+
+            # PC inputs
+            self._velodyne_list.append( [os.path.join(velodyne_dir, 
+                str(frame).zfill(6)+'.bin') for frame in self._frames_list[scene_id]] )
+            self._label_list.append( [os.path.join(label_dir, 
+                str(frame).zfill(6)+'.label') for frame in self._frames_list[scene_id]] )
+            self._pred_list.append( [os.path.join(pred_dir, 
+                str(frame).zfill(6)+'.bin') for frame in self._frames_list[scene_id]] )
+            # Voxel ground truths
+            self._voxel_label_list.append( [os.path.join(voxel_dir, 
+                str(frame).zfill(6)+'.label') for frame in self._frames_list[scene_id]] )
+            self._occupied_list.append( [os.path.join(voxel_dir, 
+                str(frame).zfill(6)+'.bin') for frame in self._frames_list[scene_id]] )
+            self._invalid_list.append( [os.path.join(voxel_dir, 
+                str(frame).zfill(6)+'.invalid') for frame in self._frames_list[scene_id]] )
+
+        # Get number of frames to iterate over
+        self._num_frames_scene = len(self._index_list)
 
     # Use all frames, if there is no data then zero pad
     def __len__(self):
-        return sum(self._num_frames_scene)
+        return self._num_frames_scene
     
     def collate_fn(self, data):
         output_batch = [bi[0] for bi in data]
@@ -226,22 +247,24 @@ class Rellis3dDataset(Dataset):
         return aug_t
     
     def __getitem__(self, idx):
-        # -1 indicates no data
-        # print("idx ", idx)
-        # the final index is the output
-        idx_range = self.find_horizon(idx)
+        scene_name  = self._scenes_list[idx]
+        scene_id    = int(scene_name)       # Scene ID
+        frame_id    = self._index_list[idx] # Frame ID in current scene ID
+        
+        idx_range = self.find_horizon(scene_id, frame_id)
 
         current_points = []
         current_labels = []
-
+  
         voxels = np.fromfile(
-                self._voxel_label_list[idx_range[-1]], dtype=np.uint8
+                self._voxel_label_list[scene_id][idx_range[-1]], dtype=np.uint8
             ).reshape(self.grid_dims.astype(np.int))
 
         voxels = LABELS_REMAP[voxels].astype(np.uint8)
-        invalid_voxels = np.zeros_like(voxels, dtype=np.uint8)
+        invalid_voxels = unpack(np.fromfile(self._invalid_list[scene_id][idx_range[-1]], 
+                        dtype=np.uint8)).reshape(self.grid_dims.astype(np.int))
 
-        curr_pose_mat = self._poses[idx_range[-1]].reshape(3, 4)
+        curr_pose_mat = self._poses[scene_id][idx_range[-1]].reshape(3, 4)
         curr_pose_rot   = curr_pose_mat[0:3, 0:3].T # Global to current rot R^T
         curr_pose_trans = -curr_pose_rot @ curr_pose_mat[:, 3] # Global to current trans (-R^T * t)
         
@@ -253,20 +276,20 @@ class Rellis3dDataset(Dataset):
                 points = np.zeros((1, 3), dtype=np.float16)
                 labels = np.zeros((1,), dtype=np.uint8)
             else:
-                points = np.fromfile(self._velodyne_list[i], 
+                points = np.fromfile(self._velodyne_list[scene_id][i], 
                     dtype=np.float32).reshape(-1,4)[:, :3]
 
                 if self.apply_transform:
-                    prev_pose_mat = self._poses[i].reshape(3, 4)
+                    prev_pose_mat = self._poses[scene_id][i].reshape(3, 4)
                     prev_pose_rot = prev_pose_mat[0:3, 0:3]
                     prev_pose_trans= prev_pose_mat[:, 3]
                     # pdb.set_trace()
                     points_in_global = ((prev_pose_rot @ points.T).T + prev_pose_trans)
                     points = (curr_pose_rot @ points_in_global.T).T + curr_pose_trans
                 if not self.use_gt:
-                    preds = np.fromfile(self._pred_list[i], dtype=np.uint32).reshape((-1)).astype(np.uint8)
+                    preds = np.fromfile(self._pred_list[scene_id][i], dtype=np.uint32).reshape((-1)).astype(np.uint8)
                 else:
-                    preds = np.fromfile(self._label_list[i], dtype=np.uint32).reshape((-1)).astype(np.uint8)
+                    preds = np.fromfile(self._label_list[scene_id][i], dtype=np.uint32).reshape((-1)).astype(np.uint8)
                 labels = preds & 0xFFFF
 
                 # Filter points outside of voxel grid
@@ -275,19 +298,19 @@ class Rellis3dDataset(Dataset):
                 points = points[grid_point_mask, :]
                 labels = labels[grid_point_mask]
 
-                # gt = np.fromfile(self._pred_list[i], dtype=np.uint32).reshape((-1))
-                # print("Accuracy ", np.sum(gt==preds) / gt.shape[0])
-                current_invalid_voxels = unpack(
-                    np.fromfile(self._invalid_list[i], 
-                        dtype=np.uint8)).reshape(self.grid_dims.astype(np.int))
-                invalid_voxels = invalid_voxels | current_invalid_voxels
-                invalid_voxels_mask = self.points_to_voxels(invalid_voxels, points)
+                # current_invalid_voxels = unpack(
+                #     np.fromfile(self._invalid_list[scene_id][i], 
+                #         dtype=np.uint8)).reshape(self.grid_dims.astype(np.int))
+                # invalid_voxels_mask = self.points_to_voxels(current_invalid_voxels, points)
 
                 if self.remap:
                     labels = LABELS_REMAP[labels].astype(np.uint8)
 
-                # # Ego vehicle = 0
-                valid_point_mask = np.logical_not(invalid_voxels_mask) & (labels!=0)
+                # Ego vehicle = 0
+                dynamic_mask = np.logical_not(
+                    np.isin(labels, DYNAMIC_LABELS)
+                )
+                valid_point_mask = dynamic_mask & (labels!=0) #& np.logical_not(invalid_voxels_mask) 
                 points = points[valid_point_mask]
                 labels = labels[valid_point_mask]
 
@@ -311,12 +334,13 @@ class Rellis3dDataset(Dataset):
 
         return current_points, current_labels, voxels, invalid_voxels
 
-    def find_horizon(self, idx):
+    def find_horizon(self, scene_id, idx):
         end_idx = idx
 
-        idx_range = np.arange(idx-self._num_frames, idx)+1
-        diffs = np.asarray([int(self._frames_list[end_idx]) - int(self._frames_list[i]) for i in idx_range])
-        good_diffs = -1 * (np.arange(-self._num_frames, 0) + 1)
+        idx_range = np.arange(idx- self._num_frames, idx)+1
+        diffs = np.asarray([int(self._frames_list[scene_id][end_idx]) \
+            - int(self._frames_list[scene_id][i]) for i in idx_range])
+        good_diffs = -1 * (np.arange(- self._num_frames, 0) + 1)
         # print("idx range ", idx_range)
         idx_range[good_diffs != diffs] = -1
 
