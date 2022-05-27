@@ -116,16 +116,17 @@ def publish_voxels(map, pub, centroids, min_dim,
             12,
             20
         ], device=semantic_map.device).reshape(1, -1)
-
+        # pdb.set_trace()
         dynamic_mask = torch.all(
             semantic_map.ne(dynamic_class), dim=-1
         )
+        # pdb.set_trace()
         centroids = centroids[dynamic_mask]
         semantic_map = semantic_map[dynamic_mask]
   
         if valid_voxels_mask!=None:
             valid_voxels_mask = valid_voxels_mask[dynamic_mask]
-        
+
     # Only publish nonfree voxels
     if valid_voxels_mask!=None:
         centroids = centroids[valid_voxels_mask]
@@ -193,7 +194,7 @@ def publish_pc(pc, labels, pub, min_dim,
     """
 
     # Only publish nonfree voxels
-    nonfree_mask = labels!=LABELS_REMAP[0] & labels!=LABELS_REMAP[-1]
+    nonfree_mask = (labels!=LABELS_REMAP[0]) & (labels!=LABELS_REMAP[-1])
 
     nonfree_points = pc[nonfree_mask]
     nonfree_labels = labels[nonfree_mask].reshape(-1, 1)

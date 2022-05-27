@@ -35,13 +35,12 @@ def ray_trace_batch(points, labels, sample_spacing, device="cpu"):
     use_np = isinstance(points, np.ndarray)
     # Compute samples using array broadcasting
     if use_np:
-        points = torch.from_numpy(points).to(device=device)
-        labels = torch.from_numpy(labels).to(device=device).reshape(-1)
- 
+        points = torch.from_numpy(points).to(device=device, dtype=torch.float16)
+        labels = torch.from_numpy(labels).to(device=device, dtype=torch.uint8).reshape(-1)
     unit_vec = torch.linalg.norm(points, axis=1).reshape(-1, 1)
     unit_vec = (points / unit_vec).reshape(-1, 1, 3)
 
-    difs = torch.arange(0.0, 100.0, sample_spacing, device=device).reshape(1, -1, 1)
+    difs = torch.arange(0.0, 100.0, sample_spacing, device=device, dtype=torch.float16).reshape(1, -1, 1)
     difs = unit_vec * difs
     new_samples = points.reshape(-1, 1, 3) - difs
 
@@ -62,7 +61,7 @@ def ray_trace_batch(points, labels, sample_spacing, device="cpu"):
     good_labels = good_labels.detach().cpu().numpy().reshape(-1, 1)
     good_pc = np.hstack((good_samples, good_labels))
     # print("Elapsed time for 4 ", time.time() - curr_time)
-
+    torch.cuda.empty_cache()
     return good_pc
 
 class Rellis3dDataset(Dataset):
@@ -145,11 +144,8 @@ class Rellis3dDataset(Dataset):
                 self._scenes_list.append(scene_num)
                 self._index_list.append(frame_index)
         
-
-        # pdb.set_trace()
-        for i in range(self._num_scenes):
-            scene_name = self._scenes_list[i]
-            frame_id = self._index_list[i]
+        for scene_id in range(self._num_scenes):
+            scene_name = self._scenes[scene_id]
 
             velodyne_dir = os.path.join(self._directory, scene_name, 'os1_cloud_node_kitti_bin')
             label_dir = os.path.join(self._directory, scene_name, 'os1_cloud_node_semantickitti_label_id')
@@ -157,7 +153,6 @@ class Rellis3dDataset(Dataset):
             pred_dir = os.path.join(self._directory, scene_name, model_name, 'os1_cloud_node_semantickitti_label_id')
             
             # Load all poses and frame indices regardless of mode
-            scene_id = int(scene_name)
             self._poses.append( np.loadtxt(os.path.join(self._directory, scene_name, 'poses.txt')).reshape(-1, 12) )
             self._frames_list.append([ \
                 os.path.splitext(filename)[0] for filename in sorted(os.listdir(velodyne_dir))])
@@ -190,7 +185,8 @@ class Rellis3dDataset(Dataset):
         label_batch = [bi[1] for bi in data]
         voxel_batch = [bi[2] for bi in data]
         invalid_batch = [bi[3] for bi in data]
-        return output_batch, label_batch, voxel_batch, invalid_batch
+        occupied_batch = [bi[4] for bi in data]
+        return output_batch, label_batch, voxel_batch, invalid_batch, occupied_batch
     
     def points_to_voxels(self, voxel_grid, points):
         # Valid voxels (make sure to clip)
@@ -255,7 +251,7 @@ class Rellis3dDataset(Dataset):
 
         current_points = []
         current_labels = []
-  
+
         voxels = np.fromfile(
                 self._voxel_label_list[scene_id][idx_range[-1]], dtype=np.uint8
             ).reshape(self.grid_dims.astype(np.int))
@@ -263,6 +259,9 @@ class Rellis3dDataset(Dataset):
         voxels = LABELS_REMAP[voxels].astype(np.uint8)
         invalid_voxels = unpack(np.fromfile(self._invalid_list[scene_id][idx_range[-1]], 
                         dtype=np.uint8)).reshape(self.grid_dims.astype(np.int))
+        occupied_voxels= unpack(np.fromfile(
+                self._occupied_list[scene_id][idx_range[-1]], dtype=np.uint8
+            )).reshape(self.grid_dims.astype(np.int))
 
         curr_pose_mat = self._poses[scene_id][idx_range[-1]].reshape(3, 4)
         curr_pose_rot   = curr_pose_mat[0:3, 0:3].T # Global to current rot R^T
@@ -320,7 +319,7 @@ class Rellis3dDataset(Dataset):
 
                 labels = labels.reshape(-1, 1)
 
-                points = points.astype(np.float16)
+                points = points.astype(np.float16) #[:, [1, 0, 2]]
                 labels = labels.astype(np.uint8)
                 
             # Save augmentation to avoid duplicating voxel data
@@ -332,11 +331,10 @@ class Rellis3dDataset(Dataset):
             voxels = self.get_voxel_aug(voxels, aug_index)
             invalid_voxels = self.get_voxel_aug(invalid_voxels, aug_index)
 
-        return current_points, current_labels, voxels, invalid_voxels
+        return current_points, current_labels, voxels, invalid_voxels, occupied_voxels
 
     def find_horizon(self, scene_id, idx):
         end_idx = idx
-
         idx_range = np.arange(idx- self._num_frames, idx)+1
         diffs = np.asarray([int(self._frames_list[scene_id][end_idx]) \
             - int(self._frames_list[scene_id][i]) for i in idx_range])
