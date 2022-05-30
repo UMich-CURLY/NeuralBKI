@@ -75,7 +75,7 @@ class Rellis3dDataset(Dataset):
         num_frames=20,
         voxelize_input=False,
         remap=True,
-        use_gt=True,
+        use_gt=False,
         use_aug=True,
         apply_transform=True,
         model_name="salsa",
@@ -164,7 +164,7 @@ class Rellis3dDataset(Dataset):
             self._label_list.append( [os.path.join(label_dir, 
                 str(frame).zfill(6)+'.label') for frame in self._frames_list[scene_id]] )
             self._pred_list.append( [os.path.join(pred_dir, 
-                str(frame).zfill(6)+'.bin') for frame in self._frames_list[scene_id]] )
+                str(frame).zfill(6)+'.label') for frame in self._frames_list[scene_id]] )
             # Voxel ground truths
             self._voxel_label_list.append( [os.path.join(voxel_dir, 
                 str(frame).zfill(6)+'.label') for frame in self._frames_list[scene_id]] )

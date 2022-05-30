@@ -8,27 +8,27 @@ from torch import long
 from Models.DiscreteBKI import DiscreteBKI
 
 CLASS_COUNTS_REMAPPED = np.array([
-    5456148317,         # Marked as zero because void is filtered out 
+    0,         # Marked as zero because void is filtered out 
     0,   
-    105508107,    
-    36197248,          
-    14564,          
-    24107,
+    74318204,    
+    22488469,          
+    8791,          
+    18146,
     0,          
     0,          
     0,          
-    88,          
+    10,          
     0,      
-    199586,
+    165493,
     0,          
-    1232163,   
-    41967589,     
-    10212096,     
-    459609,     
-    387666,
-    1394774,     
-    1166598,  
-    2523980288
+    893182,   
+    29060462,     
+    6046058,     
+    355384,     
+    269356,
+    951300,     
+    905264,  
+    839469936
 ], dtype=np.long)
 
 # Intersection, union for one frame

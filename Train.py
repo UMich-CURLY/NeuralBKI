@@ -1,12 +1,14 @@
 import os
 import pdb
 import time
+import json
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 import numpy as np
 
 # Torch imports
 import torch
+from torch import nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -36,7 +38,7 @@ dataset_loc = os.path.join(home_dir, "Data/Rellis-3D")
 SEED = 42
 NUM_CLASSES = colors.shape[0]
 TRAIN_DIR = dataset_loc
-NUM_FRAMES = 8
+NUM_FRAMES = 10
 MODEL_NAME = "DiscreteBKI"
 model_name = MODEL_NAME + "_" + str(NUM_CLASSES)
 
@@ -50,15 +52,14 @@ LABEL_TYPE = torch.uint8
 
 #Model Parameters
 class_frequencies = CLASS_COUNTS_REMAPPED
-class_frequencies[DYNAMIC_LABELS] = 0 # dynamic object and void are filtered out
-epsilon_w = 1e-6  # eps to avoid zero division
+epsilon_w = 1e-5  # eps to avoid zero division
 weights = torch.from_numpy( \
-    (1 / np.log(class_frequencies + epsilon_w) ) *
-    np.sum(class_frequencies)/class_frequencies.shape[0]
-).to(torch.float32)
-criterion = FocalLoss(2, weights, device)
+    (1 / np.log(class_frequencies + epsilon_w) ) * (np.sum(class_frequencies)/class_frequencies.shape[0])
+).to(dtype=FLOAT_TYPE, device=device)
+weights = weights / torch.sum(weights)
+criterion = FocalLoss(gamma=2, alpha=weights, device=device)
     # nn.CrossEntropyLoss(weight=weights.to(device))
-
+# pdb.set_trace()
 scenes = [ s for s in sorted(os.listdir(TRAIN_DIR)) if s.isdigit() ]
 model_params_file = os.path.join(TRAIN_DIR, scenes[-1], 'params.json')
 with open(model_params_file) as f:
@@ -66,15 +67,15 @@ with open(model_params_file) as f:
     grid_params['grid_size'] = [ int(p) for p in grid_params['grid_size'] ]
 
 # Load model
-lr = 1e-1
+lr = 1e-5
 BETA1 = 0.9
 BETA2 = 0.999
 model, B, decayRate = get_model(MODEL_NAME, grid_params=grid_params, device=device)
 
-rellis_ds = Rellis3dDataset(directory=TRAIN_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=True)
+rellis_ds = Rellis3dDataset(directory=TRAIN_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=True, use_gt=False)
 dataloader = DataLoader(rellis_ds, batch_size=B, shuffle=True, collate_fn=rellis_ds.collate_fn, num_workers=NUM_WORKERS)
 
-rellis_ds_val  = Rellis3dDataset(directory=TRAIN_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=True, model_setting="val")
+rellis_ds_val  = Rellis3dDataset(directory=TRAIN_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=True, use_gt=False, model_setting="val")
 dataloader_val = DataLoader(rellis_ds, batch_size=B, shuffle=True, collate_fn=rellis_ds.collate_fn, num_workers=NUM_WORKERS)
 
 trial_dir = os.path.join(MODEL_RUN_DIR, "t"+TRIAL_NUM)
@@ -151,7 +152,7 @@ for epoch in range(EPOCH_NUM):
         loss = criterion(batch_preds, batch_voxels_labels.long())
         loss.backward()
         optimizer.step()
-
+       
         # Accuracy
         with torch.no_grad():
             # Softmax on expectation
@@ -172,6 +173,10 @@ for epoch in range(EPOCH_NUM):
         # print("Memory reserved ", torch.cuda.memory_reserved(device=device)/1e9)
             
         train_count += len(points)
+    
+    # writer.add_scalar(MODEL_NAME + '/Loss/Train', loss.item(), epoch)
+    # writer.add_scalar(MODEL_NAME + '/Accuracy/Train', accuracy, epoch)
+    # writer.add_scalar(MODEL_NAME + '/mIoU/Train', np.mean(inter/union), epoch)
 
     # Save model, decrease learning rate
     my_lr_scheduler.step()
@@ -258,10 +263,13 @@ for epoch in range(EPOCH_NUM):
                 print(f'Epoch Num: {epoch} ------ average val loss: {running_loss/counter}')
                 print(f'Epoch Num: {epoch} ------ average val accuracy: {num_correct/num_total}')
                 print(f'Epoch Num: {epoch} ------ val miou: {np.mean(temp_intersections / temp_unions)}')
+                # writer.add_scalar(MODEL_NAME + '/Loss/Train', running_loss/counter, val_iter)
+                # writer.add_scalar(MODEL_NAME + '/Accuracy/Train', num_correct/num_total, val_iter)
+                # writer.add_scalar(MODEL_NAME + '/mIoU/Train', np.mean(all_intersections / all_unions), val_iter)
             val_iter += 1
-            # writer.add_scalar(MODEL_NAME + '/Loss/Val', running_loss/counter, epoch)
-            # writer.add_scalar(MODEL_NAME + '/Accuracy/Val', num_correct/num_total, epoch)
-            # writer.add_scalar(MODEL_NAME + '/mIoU/Val', np.mean(all_intersections / all_unions), epoch)
+            writer.add_scalar(MODEL_NAME + '/Loss/Val', running_loss/counter, epoch)
+            writer.add_scalar(MODEL_NAME + '/Accuracy/Val', num_correct/num_total, epoch)
+            writer.add_scalar(MODEL_NAME + '/mIoU/Val', np.mean(all_intersections / all_unions), epoch)
 
         # Log Epoch
         all_intersections = all_intersections[all_unions > 0]

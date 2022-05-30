@@ -130,3 +130,10 @@ dmypy.json
 
 # Tensorflow event emitter
 events.out.*
+
+# Pytorch model weights
+*.pt
+
+# Weights
+./Models/Runs/*
+./Models/Weights/*
