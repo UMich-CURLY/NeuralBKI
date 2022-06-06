@@ -30,7 +30,13 @@ else:
   start = None
   end = None
 print("device is ", device)
-    
+
+import rospy
+from visualization_msgs.msg import *
+rospy.init_node('talker',disable_signals=True)
+map_pub = rospy.Publisher('SemMap', MarkerArray, queue_size=10)
+pred_pub = rospy.Publisher('SemPredMap', MarkerArray, queue_size=10)
+
 home_dir = os.path.expanduser('~')
 dataset_loc = os.path.join(home_dir, "Data/Rellis-3D")
 
@@ -54,11 +60,11 @@ LABEL_TYPE = torch.uint8
 class_frequencies = CLASS_COUNTS_REMAPPED
 epsilon_w = 1e-5  # eps to avoid zero division
 weights = torch.from_numpy( \
-    (1 / np.log(class_frequencies + epsilon_w) ) * (np.sum(class_frequencies)/class_frequencies.shape[0])
+    (1 / np.log(class_frequencies + epsilon_w) )
 ).to(dtype=FLOAT_TYPE, device=device)
-weights = weights / torch.sum(weights)
-criterion = FocalLoss(gamma=2, alpha=weights, device=device)
-    # nn.CrossEntropyLoss(weight=weights.to(device))
+
+criterion = nn.CrossEntropyLoss(weight=weights) #FocalLoss(gamma=2, alpha=weights, device=device)
+    # nn.CrossEntropyLoss(weight=weights)
 # pdb.set_trace()
 scenes = [ s for s in sorted(os.listdir(TRAIN_DIR)) if s.isdigit() ]
 model_params_file = os.path.join(TRAIN_DIR, scenes[-1], 'params.json')
@@ -67,16 +73,16 @@ with open(model_params_file) as f:
     grid_params['grid_size'] = [ int(p) for p in grid_params['grid_size'] ]
 
 # Load model
-lr = 1e-5
+lr = 1e-1
 BETA1 = 0.9
 BETA2 = 0.999
 model, B, decayRate = get_model(MODEL_NAME, grid_params=grid_params, device=device)
 
-rellis_ds = Rellis3dDataset(directory=TRAIN_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=True, use_gt=False)
-dataloader = DataLoader(rellis_ds, batch_size=B, shuffle=True, collate_fn=rellis_ds.collate_fn, num_workers=NUM_WORKERS)
+rellis_ds = Rellis3dDataset(directory=TRAIN_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=False, use_gt=False)
+dataloader = DataLoader(rellis_ds, batch_size=B, shuffle=False, collate_fn=rellis_ds.collate_fn, num_workers=NUM_WORKERS)
 
-rellis_ds_val  = Rellis3dDataset(directory=TRAIN_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=True, use_gt=False, model_setting="val")
-dataloader_val = DataLoader(rellis_ds, batch_size=B, shuffle=True, collate_fn=rellis_ds.collate_fn, num_workers=NUM_WORKERS)
+rellis_ds_val  = Rellis3dDataset(directory=TRAIN_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=False, use_gt=False, model_setting="val")
+dataloader_val = DataLoader(rellis_ds_val, batch_size=B, shuffle=False, collate_fn=rellis_ds_val.collate_fn, num_workers=NUM_WORKERS)
 
 trial_dir = os.path.join(MODEL_RUN_DIR, "t"+TRIAL_NUM)
 save_dir = os.path.join("Models", "Weights", model_name, "t"+TRIAL_NUM)
@@ -102,7 +108,7 @@ batch_idx = 0
 for epoch in range(EPOCH_NUM):
     # Training
     model.train()
-
+    idx = 0
     for points, points_labels, voxels, invalid_voxels, _ in dataloader:
         batch_voxels_labels = torch.zeros((0, 1), device=device, dtype=LABEL_TYPE)
         batch_preds = torch.zeros((0, NUM_CLASSES), device=device, dtype=FLOAT_TYPE)
@@ -120,9 +126,15 @@ for epoch in range(EPOCH_NUM):
             if labeled_pc.shape[0]==0: # Zero padded
                 print("continue")
                 continue
-            
+
             preds = model(current_map, labeled_pc)
 
+            # publish_pc(labeled_pc[:, 0:3], labeled_pc[:, 3], map_pub,
+            #     model.min_bound.reshape(-1),
+            #     model.max_bound.reshape(-1),
+            #     model.grid_size.reshape(-1)
+            # )
+            # pdb.set_trace()
             prior_mask = torch.logical_not(torch.all(preds==model.prior, dim=-1))
 
             voxels_np = np.array(voxels[f]).astype(np.uint8)
@@ -137,22 +149,43 @@ for epoch in range(EPOCH_NUM):
                     invalid_voxels_np
                 ).to(device, dtype=torch.bool)
             )
+            occ_mask = voxels_labels>0
 
             # Exclude free space, invalid voxels, and nonupdated map cells
-            voxels_mask = void_mask & valid_voxels_mask & prior_mask
+            voxels_mask = void_mask & valid_voxels_mask & prior_mask & occ_mask
             valid_voxels_labels = voxels_labels[voxels_mask]
             preds_masked = preds[voxels_mask]
+
+            if idx%10*len(points)==0:
+                publish_voxels(voxels_labels, map_pub, 
+                    model.centroids,
+                    model.min_bound.reshape(-1),
+                    model.max_bound.reshape(-1),
+                    model.grid_size.reshape(-1), valid_voxels_mask=voxels_mask)
+                pdb.set_trace()
+                publish_voxels(preds, pred_pub, 
+                    model.centroids,
+                    model.min_bound.reshape(-1),
+                    model.max_bound.reshape(-1),
+                    model.grid_size.reshape(-1), valid_voxels_mask=voxels_mask)
+                pdb.set_trace()
+            idx += 1
+            # publish_pc(labeled_pc[:, :3], labeled_pc[:, 3], map_pub, 
+            #     model.min_bound.reshape(-1),
+            #     model.max_bound.reshape(-1),
+            #     model.grid_size.reshape(-1))
+            # pdb.set_trace()
 
             valid_voxels_labels       = valid_voxels_labels.view(-1, 1)
             batch_voxels_labels = torch.vstack((batch_voxels_labels, valid_voxels_labels))
             expected_preds = preds_masked / torch.sum(preds_masked, dim=-1, keepdim=True)
             batch_preds = torch.vstack((batch_preds, expected_preds))
-        
+  
         batch_voxels_labels = batch_voxels_labels.reshape(-1)
         loss = criterion(batch_preds, batch_voxels_labels.long())
         loss.backward()
         optimizer.step()
-       
+   
         # Accuracy
         with torch.no_grad():
             # Softmax on expectation
@@ -173,13 +206,13 @@ for epoch in range(EPOCH_NUM):
         # print("Memory reserved ", torch.cuda.memory_reserved(device=device)/1e9)
             
         train_count += len(points)
-    
+    continue
     # writer.add_scalar(MODEL_NAME + '/Loss/Train', loss.item(), epoch)
     # writer.add_scalar(MODEL_NAME + '/Accuracy/Train', accuracy, epoch)
     # writer.add_scalar(MODEL_NAME + '/mIoU/Train', np.mean(inter/union), epoch)
 
     # Save model, decrease learning rate
-    my_lr_scheduler.step()
+    # my_lr_scheduler.step()
     torch.save(model.state_dict(), os.path.join(save_dir, "Epoch" + str(epoch) + ".pt"))
 
     print("Testing inference on validation...")
@@ -250,6 +283,7 @@ for epoch in range(EPOCH_NUM):
             num_total += voxels_np.shape[0]
 
             inter, union = iou_one_frame(max_batch_preds, batch_voxels_labels, n_classes=NUM_CLASSES)
+
             try:
                 all_intersections += inter
                 all_unions += union
@@ -267,10 +301,10 @@ for epoch in range(EPOCH_NUM):
                 # writer.add_scalar(MODEL_NAME + '/Accuracy/Train', num_correct/num_total, val_iter)
                 # writer.add_scalar(MODEL_NAME + '/mIoU/Train', np.mean(all_intersections / all_unions), val_iter)
             val_iter += 1
-            writer.add_scalar(MODEL_NAME + '/Loss/Val', running_loss/counter, epoch)
-            writer.add_scalar(MODEL_NAME + '/Accuracy/Val', num_correct/num_total, epoch)
-            writer.add_scalar(MODEL_NAME + '/mIoU/Val', np.mean(all_intersections / all_unions), epoch)
-
+            # writer.add_scalar(MODEL_NAME + '/Loss/Val', running_loss/counter, epoch)
+            # writer.add_scalar(MODEL_NAME + '/Accuracy/Val', num_correct/num_total, epoch)
+            # writer.add_scalar(MODEL_NAME + '/mIoU/Val', np.mean(all_intersections / all_unions), epoch)
+ 
         # Log Epoch
         all_intersections = all_intersections[all_unions > 0]
         all_unions = all_unions[all_unions > 0]

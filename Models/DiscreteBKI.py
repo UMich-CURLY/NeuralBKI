@@ -63,14 +63,14 @@ class DiscreteBKI(torch.nn.Module):
                     else:
                         weight = self.inverse_sigmoid(kernel_value)
                         weights.append(torch.nn.Parameter(weight))
-
         weights = torch.tensor(weights, dtype=self.dtype, device=self.device).view(
             1, 1, self.filter_size, self.filter_size, self.filter_size)
-
+        # pdb.set_trace()
         self.weights = torch.nn.Parameter(weights)
 
     def inverse_sigmoid(self, x):
         return -torch.log((1 / (x + 1e-8)) - 1)
+        # return -torch.log( (1-x) /  (x+1e-8) )
             
     def calculate_kernel(self, d):
         if d > self.max_dist:
@@ -78,8 +78,8 @@ class DiscreteBKI(torch.nn.Module):
         if d == 0:
             return 1
         return self.sigma * ( 
-                (1/3)*(2 + torch.cos(2 * self.pi * d/self.ell))*(1 - d/self.ell) +
-                         1/(2*self.pi) * torch.sin(2 * self.pi * d / self.ell)
+                (1.0/3)*(2 + torch.cos(2 * self.pi * d/self.ell))*(1 - d/self.ell) +
+                         1.0/(2*self.pi) * torch.sin(2 * self.pi * d / self.ell)
                          )
             
             

@@ -52,10 +52,16 @@ def geo_complete_score(pred, target, empty_class_idx=20):
 
     nonempty_preds  = pred != empty_class_idx
     nonempty_target = target != empty_class_idx
- 
-    intersection, union = iou_one_frame(nonempty_preds, nonempty_target, n_classes=2)
 
-    return intersection / (union + 1e-6)
+    TP += np.sum((nonempty_preds == 1) & (nonempty_target == 1))
+    FP += np.sum((nonempty_preds == 1) & (nonempty_target == 0))
+    TN += np.sum((nonempty_preds == 0) & (nonempty_target == 0))
+    FN += np.sum((nonempty_preds == 0) & (nonempty_target == 1))
+ 
+    precision, recall, iou = TP / (TP + FP), \
+        TP / (TP + FN), \
+        TP / (TP + FP + FN)
+    return precision, recall, iou
 
 def setup_seed(seed=42):
     torch.manual_seed(seed)
@@ -66,7 +72,7 @@ def setup_seed(seed=42):
 def get_model(model_name, grid_params, device):
     # Model parameters
     if model_name == "DiscreteBKI":
-        B = 8
+        B = 20
         model = DiscreteBKI(
             torch.tensor(grid_params['grid_size'], dtype=torch.long).to(device), # Grid size
             torch.tensor(grid_params['min_bound']).to(device), # Lower bound

@@ -7,7 +7,6 @@ import math
 import numpy as np
 import random
 import json
-from pyrsistent import v
 
 import torch
 import torch.nn.functional as F
@@ -178,7 +177,7 @@ class Rellis3dDataset(Dataset):
 
     # Use all frames, if there is no data then zero pad
     def __len__(self):
-        return self._num_frames_scene
+        return 80 #self._num_frames_scene
     
     def collate_fn(self, data):
         output_batch = [bi[0] for bi in data]
@@ -267,7 +266,7 @@ class Rellis3dDataset(Dataset):
         curr_pose_rot   = curr_pose_mat[0:3, 0:3].T # Global to current rot R^T
         curr_pose_trans = -curr_pose_rot @ curr_pose_mat[:, 3] # Global to current trans (-R^T * t)
         
-        aug_index = np.random.randint(0,6)
+        aug_index = np.random.randint(0,3) # Set end idx to 6 to do rotations
 
         aug_mat = self.get_aug_matrix(aug_index)
         for i in idx_range:
