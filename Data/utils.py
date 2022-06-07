@@ -83,6 +83,16 @@ colors = np.array([ # RGB
     (255,255,255)   #20freespace
 ]) / 255.0 # normalize each channel [0-1] since is what Open3D uses
 
+def points_to_voxels_torch(voxel_grid, points, min_bound, grid_dims, voxel_sizes):
+    voxels = torch.floor((points - min_bound) / voxel_sizes).to(dtype=torch.int)
+    # Clamp to account for any floating point errors
+    maxes = (grid_dims - 1).reshape(1, 3)
+    mins = torch.zeros_like(maxes)
+    voxels = torch.clip(voxels, mins, maxes).to(dtype=torch.long)
+
+    voxel_grid = voxel_grid[voxels[:, 0], voxels[:, 1], voxels[:, 2]]
+    return voxel_grid
+
 def publish_voxels(map, pub, centroids, min_dim, 
     max_dim, grid_dims, model="DiscreteBKI", pub_dynamic=False,
     valid_voxels_mask=None):
@@ -230,7 +240,7 @@ def publish_pc(pc, labels, pub, min_dim,
     marker.scale.z = (max_dim[2] - min_dim[2]) / grid_dims[2]
     
     for i in range(nonfree_labels.shape[0]):              
-        pred = nonfree_labels[i].cpu().numpy().astype(np.uint32)
+        pred = nonfree_labels[i].cpu().detach().numpy().astype(np.uint32)
 
         point = Point32()
         color = ColorRGBA()
@@ -238,7 +248,6 @@ def publish_pc(pc, labels, pub, min_dim,
         point.y = nonfree_points[i, 1]
         point.z = nonfree_points[i, 2]
 
-        # pdb.set_trace()
         color.r, color.g, color.b = colors[pred]
 
         color.a = 1.0

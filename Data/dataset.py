@@ -79,6 +79,7 @@ class Rellis3dDataset(Dataset):
         use_gt=False,
         use_aug=True,
         apply_transform=True,
+        use_voxels=False,
         model_name="salsa",
         model_setting="train"
         ):
@@ -95,6 +96,7 @@ class Rellis3dDataset(Dataset):
         self.use_gt = use_gt
         self.use_aug = use_aug
         self.apply_transform = apply_transform
+        self.use_voxels = use_voxels
         
         self._scenes = [ s for s in sorted(os.listdir(self._directory)) if s.isdigit() ]
  
@@ -182,13 +184,19 @@ class Rellis3dDataset(Dataset):
         return self._num_frames_scene
     
     def collate_fn(self, data):
-        output_batch = [bi[0] for bi in data]
-        label_batch = [bi[1] for bi in data]
-        voxel_batch = [bi[2] for bi in data]
-        invalid_batch = [bi[3] for bi in data]
-        occupied_batch = [bi[4] for bi in data]
-        return output_batch, label_batch, voxel_batch, invalid_batch, occupied_batch
-    
+        if self.use_voxels:
+            output_batch = [bi[0] for bi in data]
+            label_batch = [bi[1] for bi in data]
+            voxel_batch = [bi[2] for bi in data]
+            invalid_batch = [bi[3] for bi in data]
+            occupied_batch = [bi[4] for bi in data]
+            return output_batch, label_batch, voxel_batch, invalid_batch, occupied_batch
+        else:
+            output_batch = [bi[0] for bi in data]
+            label_batch = [bi[1] for bi in data]
+            gt_label_batch = [bi[2] for bi in data]
+            return output_batch, label_batch, gt_label_batch, None, None
+
     def points_to_voxels(self, voxel_grid, points, mask_points=True):
         if mask_points:
             # Valid voxels (make sure to clip)
@@ -261,17 +269,20 @@ class Rellis3dDataset(Dataset):
 
         current_points = []
         current_labels = []
+        current_gt_label = None
 
         voxels = np.fromfile(
                 self._voxel_label_list[scene_id][idx_range[-1]], dtype=np.uint8
             ).reshape(self.grid_dims.astype(np.int))
 
         voxels = LABELS_REMAP[voxels].astype(np.uint8)
-        invalid_voxels = unpack(np.fromfile(self._invalid_list[scene_id][idx_range[-1]], 
-                        dtype=np.uint8)).reshape(self.grid_dims.astype(np.int))
-        occupied_voxels= unpack(np.fromfile(
-                self._occupied_list[scene_id][idx_range[-1]], dtype=np.uint8
-            )).reshape(self.grid_dims.astype(np.int))
+
+        if self.use_voxels:
+            invalid_voxels = unpack(np.fromfile(self._invalid_list[scene_id][idx_range[-1]], 
+                            dtype=np.uint8)).reshape(self.grid_dims.astype(np.int))
+            occupied_voxels= unpack(np.fromfile(
+                    self._occupied_list[scene_id][idx_range[-1]], dtype=np.uint8
+                )).reshape(self.grid_dims.astype(np.int))
 
         ego_pose = self.get_pose(scene_id, idx_range[-1])
         to_ego   = np.linalg.inv(ego_pose)
@@ -315,28 +326,33 @@ class Rellis3dDataset(Dataset):
                 gt_labels = gt_labels[valid_point_mask]
                 labels = labels[valid_point_mask]
 
-                # Perform data augmentation
+                # Perform data augmentation on points
                 if self.use_aug:  
                     points = (aug_mat @ points.T).T
 
-                if self.use_gt:
-                    labels = gt_labels.reshape(-1, 1)
-                else:
-                    labels = labels.reshape(-1, 1)
+                gt_labels = gt_labels.reshape(-1, 1)
+                labels = labels.reshape(-1, 1)
 
                 points = points.astype(np.float16) #[:, [1, 0, 2]]
                 labels = labels.astype(np.uint8)
+
+                if not self.use_voxels and i==idx_range[-1]:
+                    current_gt_label = gt_labels.astype(np.uint8)
+
 
             # Save augmentation to avoid duplicating voxel data
             current_points.append(points)
             current_labels.append(labels)
             
         # Align voxels with augmented points
-        if self.use_aug:
+        if self.use_aug and self.use_voxels:
             voxels = self.get_voxel_aug(voxels, aug_index)
             invalid_voxels = self.get_voxel_aug(invalid_voxels, aug_index)
 
-        return current_points, current_labels, voxels, invalid_voxels, occupied_voxels
+        if self.use_voxels:
+            return current_points, current_labels, voxels, invalid_voxels, occupied_voxels
+        else:
+            return current_points, current_labels, gt_labels
 
     def find_horizon(self, scene_id, idx):
         end_idx = idx
