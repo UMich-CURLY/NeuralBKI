@@ -7,8 +7,10 @@ import math
 import numpy as np
 import random
 import json
+from sklearn.metrics import homogeneity_completeness_v_measure
 
 import torch
+from torch import gt
 import torch.nn.functional as F
 from torch.utils.data import Dataset
 
@@ -177,7 +179,7 @@ class Rellis3dDataset(Dataset):
 
     # Use all frames, if there is no data then zero pad
     def __len__(self):
-        return 80 #self._num_frames_scene
+        return self._num_frames_scene
     
     def collate_fn(self, data):
         output_batch = [bi[0] for bi in data]
@@ -187,11 +189,14 @@ class Rellis3dDataset(Dataset):
         occupied_batch = [bi[4] for bi in data]
         return output_batch, label_batch, voxel_batch, invalid_batch, occupied_batch
     
-    def points_to_voxels(self, voxel_grid, points):
-        # Valid voxels (make sure to clip)
-        valid_point_mask= np.all(
-            (points < self.max_bound) & (points >= self.min_bound), axis=1)
-        valid_points = points[valid_point_mask, :]
+    def points_to_voxels(self, voxel_grid, points, mask_points=True):
+        if mask_points:
+            # Valid voxels (make sure to clip)
+            valid_point_mask= np.all(
+                (points < self.max_bound) & (points >= self.min_bound), axis=1)
+            valid_points = points[valid_point_mask, :]
+        else:
+            valid_points = points
         voxels = np.floor((valid_points - self.min_bound) / self.voxel_sizes).astype(np.int)
         # Clamp to account for any floating point errors
         maxes = np.reshape(self.grid_dims - 1, (1, 3))
@@ -240,6 +245,12 @@ class Rellis3dDataset(Dataset):
             aug_t = t
 
         return aug_t
+
+    def get_pose(self, scene_id, frame_id):
+        pose = np.zeros((4, 4))
+        pose[3, 3] = 1
+        pose[:3, :4] = self._poses[scene_id][frame_id].reshape(3, 4)
+        return pose
     
     def __getitem__(self, idx):
         scene_name  = self._scenes_list[idx]
@@ -262,9 +273,8 @@ class Rellis3dDataset(Dataset):
                 self._occupied_list[scene_id][idx_range[-1]], dtype=np.uint8
             )).reshape(self.grid_dims.astype(np.int))
 
-        curr_pose_mat = self._poses[scene_id][idx_range[-1]].reshape(3, 4)
-        curr_pose_rot   = curr_pose_mat[0:3, 0:3].T # Global to current rot R^T
-        curr_pose_trans = -curr_pose_rot @ curr_pose_mat[:, 3] # Global to current trans (-R^T * t)
+        ego_pose = self.get_pose(scene_id, idx_range[-1])
+        to_ego   = np.linalg.inv(ego_pose)
         
         aug_index = np.random.randint(0,3) # Set end idx to 6 to do rotations
 
@@ -276,55 +286,51 @@ class Rellis3dDataset(Dataset):
             else:
                 points = np.fromfile(self._velodyne_list[scene_id][i], 
                     dtype=np.float32).reshape(-1,4)[:, :3]
-
+                
                 if self.apply_transform:
-                    prev_pose_mat = self._poses[scene_id][i].reshape(3, 4)
-                    prev_pose_rot = prev_pose_mat[0:3, 0:3]
-                    prev_pose_trans= prev_pose_mat[:, 3]
-                    # pdb.set_trace()
-                    points_in_global = ((prev_pose_rot @ points.T).T + prev_pose_trans)
-                    points = (curr_pose_rot @ points_in_global.T).T + curr_pose_trans
-                if not self.use_gt:
-                    preds = np.fromfile(self._pred_list[scene_id][i], dtype=np.uint32).reshape((-1)).astype(np.uint8)
-                else:
-                    preds = np.fromfile(self._label_list[scene_id][i], dtype=np.uint32).reshape((-1)).astype(np.uint8)
-                labels = preds & 0xFFFF
+                    to_world   = self.get_pose(scene_id, i)
+                    to_world = to_world
+                    relative_pose = np.matmul(to_ego, to_world)
+
+                    points = np.dot(relative_pose[:3, :3], points.T).T + relative_pose[:3, 3]
+
+                gt_labels = np.fromfile(self._label_list[scene_id][i], dtype=np.uint32).reshape((-1)).astype(np.uint8)
+
+                labels = np.fromfile(self._pred_list[scene_id][i], dtype=np.uint32).reshape((-1)).astype(np.uint8)
 
                 # Filter points outside of voxel grid
                 grid_point_mask= np.all(
                     (points < self.max_bound) & (points >= self.min_bound), axis=1)
                 points = points[grid_point_mask, :]
+                gt_labels = gt_labels[grid_point_mask]
                 labels = labels[grid_point_mask]
-
-                # current_invalid_voxels = unpack(
-                #     np.fromfile(self._invalid_list[scene_id][i], 
-                #         dtype=np.uint8)).reshape(self.grid_dims.astype(np.int))
-                # invalid_voxels_mask = self.points_to_voxels(current_invalid_voxels, points)
-
+                
                 if self.remap:
+                    gt_labels = LABELS_REMAP[gt_labels].astype(np.uint8)
                     labels = LABELS_REMAP[labels].astype(np.uint8)
 
                 # Ego vehicle = 0
-                dynamic_mask = np.logical_not(
-                    np.isin(labels, DYNAMIC_LABELS)
-                )
-                valid_point_mask = dynamic_mask & (labels!=0) #& np.logical_not(invalid_voxels_mask) 
+                valid_point_mask = np.isin(gt_labels, DYNAMIC_LABELS, invert=True)
                 points = points[valid_point_mask]
+                gt_labels = gt_labels[valid_point_mask]
                 labels = labels[valid_point_mask]
 
                 # Perform data augmentation
                 if self.use_aug:  
                     points = (aug_mat @ points.T).T
 
-                labels = labels.reshape(-1, 1)
+                if self.use_gt:
+                    labels = gt_labels.reshape(-1, 1)
+                else:
+                    labels = labels.reshape(-1, 1)
 
                 points = points.astype(np.float16) #[:, [1, 0, 2]]
                 labels = labels.astype(np.uint8)
-                
+
             # Save augmentation to avoid duplicating voxel data
             current_points.append(points)
             current_labels.append(labels)
-
+            
         # Align voxels with augmented points
         if self.use_aug:
             voxels = self.get_voxel_aug(voxels, aug_index)

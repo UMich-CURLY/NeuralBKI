@@ -178,7 +178,7 @@ def publish_voxels(map, pub, centroids, min_dim,
 
 
 def publish_pc(pc, labels, pub, min_dim, 
-    max_dim, grid_dims, model="DiscreteBKI", pub_dynamic=False):
+    max_dim, grid_dims, model="DiscreteBKI", pub_dynamic=False, use_mask=True):
     """
     Publishes voxel map over ros to be visualized in rviz
 
@@ -192,20 +192,22 @@ def publish_pc(pc, labels, pub, min_dim,
         grid_dims: 3x1 voxel grid resolution in xyz
         model: name of model used (Default: DiscreteBKI)
     """
+    if use_mask:
+        # Only publish nonfree voxels
+        nonfree_mask = (labels!=LABELS_REMAP[0]) & (labels!=LABELS_REMAP[-1])
 
-    # Only publish nonfree voxels
-    nonfree_mask = (labels!=LABELS_REMAP[0]) & (labels!=LABELS_REMAP[-1])
+        nonfree_points = pc[nonfree_mask]
+        nonfree_labels = labels[nonfree_mask].reshape(-1, 1)
 
-    nonfree_points = pc[nonfree_mask]
-    nonfree_labels = labels[nonfree_mask].reshape(-1, 1)
-
-    # Remove dynamic labels if specified
-    if not pub_dynamic:
-        dynamic_labels = torch.from_numpy(DYNAMIC_LABELS).to(pc.device)
-        dynamic_mask = torch.all(torch.ne(nonfree_labels, dynamic_labels), dim=-1)
-        nonfree_points = nonfree_points[dynamic_mask]
-        nonfree_labels = nonfree_labels[dynamic_mask].reshape(-1)
-        
+        # Remove dynamic labels if specified
+        if not pub_dynamic:
+            dynamic_labels = torch.from_numpy(DYNAMIC_LABELS).to(pc.device)
+            dynamic_mask = torch.all(torch.ne(nonfree_labels, dynamic_labels), dim=-1)
+            nonfree_points = nonfree_points[dynamic_mask]
+            nonfree_labels = nonfree_labels[dynamic_mask].reshape(-1)
+    else:
+        nonfree_points = pc
+        nonfree_labels=labels
 
     next_map = MarkerArray()
 

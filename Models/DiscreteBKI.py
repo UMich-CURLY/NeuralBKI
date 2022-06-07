@@ -38,6 +38,7 @@ class DiscreteBKI(torch.nn.Module):
         [xs, ys, zs] = [(max_bound[i]-min_bound[i])/(2*grid_size[i]) + 
                         torch.linspace(min_bound[i], max_bound[i], device=device, steps=grid_size[i]+1)[:-1] 
                         for i in range(3)]
+
         self.centroids = torch.cartesian_prod(xs, ys, zs).to(device)
     
     def initialize_kernel(self):
