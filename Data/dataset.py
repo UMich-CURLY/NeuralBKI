@@ -352,7 +352,7 @@ class Rellis3dDataset(Dataset):
         if self.use_voxels:
             return current_points, current_labels, voxels, invalid_voxels, occupied_voxels
         else:
-            return current_points, current_labels, gt_labels
+            return current_points, current_labels, current_gt_label
 
     def find_horizon(self, scene_id, idx):
         end_idx = idx
