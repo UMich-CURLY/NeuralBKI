@@ -16,7 +16,7 @@ from torch.utils.tensorboard import SummaryWriter
 # Custom Imports
 from Benchmarks.eval_utils import iou_one_frame
 from Data.utils import *
-from model_utils import *
+from Models.model_utils import *
 from Models.DiscreteBKI import *
 from Models.FocalLoss import FocalLoss
 from Data.dataset import Rellis3dDataset, ray_trace_batch
@@ -45,7 +45,7 @@ dataset_loc = os.path.join(home_dir, "Data/Rellis-3D")
 SEED = 42
 NUM_CLASSES = colors.shape[0]
 TRAIN_DIR = dataset_loc
-NUM_FRAMES = 5
+NUM_FRAMES = 10
 MODEL_NAME = "DiscreteBKI"
 model_name = MODEL_NAME + "_" + str(NUM_CLASSES)
 USE_FREE_SPACE = False
@@ -75,16 +75,18 @@ with open(model_params_file) as f:
     grid_params['grid_size'] = [ int(p) for p in grid_params['grid_size'] ]
 
 # Load model
-lr = 1e-1
+lr = 5e-2
 BETA1 = 0.9
 BETA2 = 0.999
 model, B, decayRate = get_model(MODEL_NAME, grid_params=grid_params, device=device)
 
-rellis_ds = Rellis3dDataset(directory=TRAIN_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=False, use_voxels=USE_FREE_SPACE, use_gt=False)
-dataloader = DataLoader(rellis_ds, batch_size=B, shuffle=False, collate_fn=rellis_ds.collate_fn, num_workers=NUM_WORKERS)
+rellis_ds = Rellis3dDataset(directory=TRAIN_DIR, device=device, num_frames=NUM_FRAMES, 
+    remap=True, use_aug=True, use_voxels=USE_FREE_SPACE, use_gt=False)
+dataloader = DataLoader(rellis_ds, batch_size=B, shuffle=True, collate_fn=rellis_ds.collate_fn, num_workers=NUM_WORKERS)
 
-rellis_ds_val  = Rellis3dDataset(directory=TRAIN_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=False, use_voxels=USE_FREE_SPACE, use_gt=False, model_setting="val")
-dataloader_val = DataLoader(rellis_ds_val, batch_size=B, shuffle=False, collate_fn=rellis_ds_val.collate_fn, num_workers=NUM_WORKERS)
+rellis_ds_val  = Rellis3dDataset(directory=TRAIN_DIR, device=device, num_frames=NUM_FRAMES, 
+    remap=True, use_aug=True, use_voxels=USE_FREE_SPACE, use_gt=False, model_setting="val")
+dataloader_val = DataLoader(rellis_ds_val, batch_size=B, shuffle=True, collate_fn=rellis_ds_val.collate_fn, num_workers=NUM_WORKERS)
 
 trial_dir = os.path.join(MODEL_RUN_DIR, "t"+TRIAL_NUM)
 save_dir = os.path.join("Models", "Weights", model_name, "t"+TRIAL_NUM)
@@ -99,6 +101,7 @@ writer = SummaryWriter(os.path.join(MODEL_RUN_DIR, "t"+TRIAL_NUM))
 # Optimizer setup
 setup_seed(SEED)
 optimizer = optim.Adam(model.parameters(), lr=lr, betas=(BETA1, BETA2))
+# optim.SGD(model.parameters(), lr=lr, momentum=0.9)
 my_lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=optimizer, gamma=decayRate)
 # torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer,
 #     T_max=100, eta_min=1e-4, verbose=True)
@@ -134,8 +137,8 @@ for epoch in range(EPOCH_NUM):
                 sem_labels = torch.from_numpy(gt_labels[b]).to(device=device)
 
                 last_pc_torch = torch.from_numpy(points[b][-1]).to(device=device)
-                sem_labels = points_to_voxels_torch(sem_labels, last_pc_torch,
-                    min_bound_torch, grid_dims_torch, voxel_sizes_torch)
+                # sem_labels = points_to_voxels_torch(sem_labels, last_pc_torch,
+                #     min_bound_torch, grid_dims_torch, voxel_sizes_torch)
                 sem_preds = points_to_voxels_torch(preds, last_pc_torch,
                     min_bound_torch, grid_dims_torch, voxel_sizes_torch)
                 # Evaluate on last frame in scan (most recent one)
@@ -143,16 +146,16 @@ for epoch in range(EPOCH_NUM):
 
                 #For visualizaing
                 test_sem_preds = torch.argmax(sem_preds, dim=-1)
-                publish_pc(last_pc_torch, test_sem_preds, pred_pub,
-                    model.min_bound.reshape(-1), 
-                    model.max_bound.reshape(-1), 
-                    model.grid_size.reshape(-1), use_mask=False)
-                pdb.set_trace()
-                publish_pc(last_pc_torch, sem_labels.reshape(-1), map_pub, 
-                    model.min_bound.reshape(-1), 
-                    model.max_bound.reshape(-1), 
-                    model.grid_size.reshape(-1), use_mask=False)
-                pdb.set_trace()
+                # publish_pc(last_pc_torch, test_sem_preds, pred_pub,
+                #     model.min_bound.reshape(-1), 
+                #     model.max_bound.reshape(-1), 
+                #     model.grid_size.reshape(-1), use_mask=False)
+                # pdb.set_trace()
+                # publish_pc(last_pc_torch, sem_labels.reshape(-1), map_pub, 
+                #     model.min_bound.reshape(-1), 
+                #     model.max_bound.reshape(-1), 
+                #     model.grid_size.reshape(-1), use_mask=False)
+                # pdb.set_trace()
 
                 batch_labels  = torch.vstack( (batch_labels, sem_labels))
                 batch_preds = torch.vstack( (batch_preds, sem_preds))
@@ -178,18 +181,18 @@ for epoch in range(EPOCH_NUM):
                 full_mask = prior_mask & void_mask & valid_mask & occ_mask
                 
                 temp_preds = preds / torch.sum(preds, dim=-1, keepdim=True)
-                publish_voxels(preds, pred_pub, model.centroids,
-                    model.min_bound.reshape(-1),
-                    model.max_bound.reshape(-1),
-                    model.grid_size.reshape(-1) )
-                    #,valid_voxels_mask=full_mask)
-                pdb.set_trace()
-                publish_voxels(sem_voxels, map_pub, model.centroids,
-                    model.min_bound.reshape(-1),
-                    model.max_bound.reshape(-1),
-                    model.grid_size.reshape(-1) )
-                    # ,valid_voxels_mask=full_mask)
-                pdb.set_trace()
+                # publish_voxels(preds, pred_pub, model.centroids,
+                #     model.min_bound.reshape(-1),
+                #     model.max_bound.reshape(-1),
+                #     model.grid_size.reshape(-1) )
+                #     #,valid_voxels_mask=full_mask)
+                # pdb.set_trace()
+                # publish_voxels(sem_voxels, map_pub, model.centroids,
+                #     model.min_bound.reshape(-1),
+                #     model.max_bound.reshape(-1),
+                #     model.grid_size.reshape(-1) )
+                #     # ,valid_voxels_mask=full_mask)
+                # pdb.set_trace()
 
                 # Add frame to running voxels
                 sem_voxels  = sem_voxels[full_mask]
@@ -204,7 +207,7 @@ for epoch in range(EPOCH_NUM):
         loss = criterion(batch_preds, batch_labels.long())
         loss.backward()
         optimizer.step()
-   
+
         # Accuracy
         with torch.no_grad():
             # Softmax on expectation
@@ -225,13 +228,13 @@ for epoch in range(EPOCH_NUM):
         # print("Memory reserved ", torch.cuda.memory_reserved(device=device)/1e9)
             
         train_count += len(points)
-    continue
+
     # writer.add_scalar(MODEL_NAME + '/Loss/Train', loss.item(), epoch)
     # writer.add_scalar(MODEL_NAME + '/Accuracy/Train', accuracy, epoch)
     # writer.add_scalar(MODEL_NAME + '/mIoU/Train', np.mean(inter/union), epoch)
 
     # Save model, decrease learning rate
-    # my_lr_scheduler.step()
+    my_lr_scheduler.step()
     torch.save(model.state_dict(), os.path.join(save_dir, "Epoch" + str(epoch) + ".pt"))
     print("Testing inference on validation...")
 
@@ -245,12 +248,12 @@ for epoch in range(EPOCH_NUM):
         all_intersections = np.zeros(NUM_CLASSES)
         all_unions = np.zeros(NUM_CLASSES) + 1e-6 # SMOOTHING
 
-        for points, points_labels, voxels, invalid_voxels, _ in dataloader_val:
-            batch_voxels_labels = torch.zeros((0, 1), device=device, dtype=LABEL_TYPE)
+        for points, points_labels, gt_labels, invalid_voxels, occupied_voxels in dataloader_val:
+            batch_labels = torch.zeros((0, 1), device=device, dtype=LABEL_TYPE)
             batch_preds = torch.zeros((0, NUM_CLASSES), device=device, dtype=FLOAT_TYPE)
-            for f in range(len(points)):
-                pc_np = np.vstack(np.array(points[f]))
-                labels_np = np.vstack(np.array(points_labels[f]))
+            for b in range(len(points)):
+                pc_np = np.vstack(np.array(points[b]))
+                labels_np = np.vstack(np.array(points_labels[b]))
                 labeled_pc = np.hstack((pc_np, labels_np))
                 
                 if labeled_pc.shape[0]==0: # Zero padded
@@ -258,43 +261,61 @@ for epoch in range(EPOCH_NUM):
                     continue
 
                 if not USE_FREE_SPACE:
-                    labeled_pc_torch = torch.from_numpy(labeled_pc)
+                    labeled_pc_torch = torch.from_numpy(labeled_pc).to(device=device)
                     preds = model(current_map, labeled_pc_torch)
-                    voxels_torch = torch.from_numpy(voxels)
+                    sem_labels = torch.from_numpy(gt_labels[b]).to(device=device)
 
-                    # Evaluate on last frame in scan (most recent one)
-                    last_pc_torch = torch.from_numpy(np.array(points[-1]))
+                    last_pc_torch = torch.from_numpy(points[b][-1]).to(device=device)
                     sem_preds = points_to_voxels_torch(preds, last_pc_torch,
-                        rellis_ds.min_bound,
-                        rellis_ds.grid_dims,
-                        rellis_ds.voxel_sizes)
-                    sem_labels= points_to_voxels_torch(voxels_torch, last_pc_torch,
-                        rellis_ds.min_bound,
-                        rellis_ds.grid_dims,
-                        rellis_ds.voxel_sizes)
-                    
-                    sem_preds = sem_preds.reshape(-1, 1)
+                        min_bound_torch, grid_dims_torch, voxel_sizes_torch)
+                    # Evaluate on last frame in scan (most recent one)
                     sem_preds = sem_preds / torch.sum(sem_preds, dim=-1, keepdim=True)
-                    batch_voxel_labels  = torch.vstack( (batch_voxel_labels, sem_labels))
+                    batch_labels  = torch.vstack( (batch_labels, sem_labels))
                     batch_preds = torch.vstack( (batch_preds, sem_preds))
-                
                 else:
-                    # TODO: add in free space
-                    pass
+                    # Sample from free space
+                    fs_pc = ray_trace_batch(pc_np, labels_np, 0.3, device)
+                    labeled_pc = torch.from_numpy(np.vstack( (labeled_pc, fs_pc) ) ).to(device=device)
+                    preds = model(current_map, labeled_pc)
 
-            batch_voxels_labels = batch_voxels_labels.reshape(-1)
-            loss = criterion(batch_preds, batch_voxels_labels.long())
+                    # Generate masks for predictions and gt voxels
+                    sem_voxels = torch.from_numpy(gt_labels[b]).to(device=device)
+                    invalid_voxels_np = np.array(invalid_voxels[b]).astype(np.bool)
+
+                    prior_mask  = torch.logical_not(torch.all(preds==model.prior, dim=-1))
+                    void_mask   = sem_voxels!=0
+                    valid_mask  = torch.logical_not(
+                        torch.from_numpy(
+                            invalid_voxels_np
+                        ).to(device, dtype=torch.bool)
+                    )
+                    occ_mask    = sem_voxels > 0
+                    full_mask = prior_mask & void_mask & valid_mask & occ_mask
+                    
+                    temp_preds = preds / torch.sum(preds, dim=-1, keepdim=True)
+
+                    # Add frame to running voxels
+                    sem_voxels  = sem_voxels[full_mask]
+                    preds       = preds[full_mask]
+                    
+                    sem_voxels  = sem_voxels.reshape(-1, 1)
+                    sem_preds   = preds / torch.sum(preds, dim=-1, keepdim=True)
+                    batch_labels = torch.vstack((batch_labels, sem_voxels))
+                    batch_preds = torch.vstack((batch_preds, sem_preds))
+
+            batch_labels = batch_labels.reshape(-1)
+            loss = criterion(batch_preds, batch_labels.long())
             running_loss += loss
             counter += batch_preds.shape[0]
 
             # Softmax on expectation
             max_batch_preds = torch.argmax(batch_preds, dim=-1)
             max_batch_preds_np = max_batch_preds.detach().cpu().numpy()
-            voxels_np = batch_voxels_labels.detach().cpu().numpy()
-            num_correct += np.sum(max_batch_preds_np == voxels_np)
-            num_total += voxels_np.shape[0]
+            batch_labels_np = batch_labels.detach().cpu().numpy()
+            num_correct += np.sum(max_batch_preds_np == batch_labels_np)
+            num_total += batch_labels_np.shape[0]
 
-            inter, union = iou_one_frame(max_batch_preds, batch_voxels_labels, n_classes=NUM_CLASSES)
+            inter, union = iou_one_frame(max_batch_preds, batch_labels, n_classes=NUM_CLASSES)
 
             try:
                 all_intersections += inter

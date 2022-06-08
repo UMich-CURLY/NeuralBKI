@@ -10,7 +10,6 @@ import json
 from sklearn.metrics import homogeneity_completeness_v_measure
 
 import torch
-from torch import gt
 import torch.nn.functional as F
 from torch.utils.data import Dataset
 
@@ -74,7 +73,6 @@ class Rellis3dDataset(Dataset):
         directory,
         device='cuda',
         num_frames=20,
-        voxelize_input=False,
         remap=True,
         use_gt=False,
         use_aug=True,
@@ -87,8 +85,6 @@ class Rellis3dDataset(Dataset):
         Parameters:
             directory: directory to the dataset
         '''
-
-        self.voxelize_input = voxelize_input
         self._directory = directory
         self._num_frames = num_frames
         self.device = device
@@ -181,21 +177,13 @@ class Rellis3dDataset(Dataset):
 
     # Use all frames, if there is no data then zero pad
     def __len__(self):
-        return 80 #self._num_frames_scene
+        return self._num_frames_scene
     
     def collate_fn(self, data):
-        if self.use_voxels:
-            output_batch = [bi[0] for bi in data]
-            label_batch = [bi[1] for bi in data]
-            voxel_batch = [bi[2] for bi in data]
-            invalid_batch = [bi[3] for bi in data]
-            occupied_batch = [bi[4] for bi in data]
-            return output_batch, label_batch, voxel_batch, invalid_batch, occupied_batch
-        else:
-            output_batch = [bi[0] for bi in data]
-            label_batch = [bi[1] for bi in data]
-            gt_label_batch = [bi[2] for bi in data]
-            return output_batch, label_batch, gt_label_batch, None, None
+        output_batch = [bi[0] for bi in data]
+        label_batch = [bi[1] for bi in data]
+        gt_label_batch = [bi[2] for bi in data]
+        return output_batch, label_batch, gt_label_batch, None, None
 
     def points_to_voxels(self, voxel_grid, points, mask_points=True):
         if mask_points:
@@ -238,22 +226,6 @@ class Rellis3dDataset(Dataset):
 
         return trans
 
-    def get_voxel_aug(self, t, state):
-        if state == 1:
-            aug_t = np.flip(t, [0]) # XZ
-        elif state == 2:
-            aug_t = np.flip(t, [1]) # YZ
-        elif state == 3:
-            aug_t = np.rot90(t, 1, [0, 1])
-        elif state == 4:
-            aug_t = np.rot90(t, 2, [0, 1])
-        elif state == 5:
-            aug_t = np.rot90(t, 3, [0, 1])
-        else:
-            aug_t = t
-
-        return aug_t
-
     def get_pose(self, scene_id, frame_id):
         pose = np.zeros((4, 4))
         pose[3, 3] = 1
@@ -271,25 +243,12 @@ class Rellis3dDataset(Dataset):
         current_labels = []
         current_gt_label = None
 
-        voxels = np.fromfile(
-                self._voxel_label_list[scene_id][idx_range[-1]], dtype=np.uint8
-            ).reshape(self.grid_dims.astype(np.int))
-
-        voxels = LABELS_REMAP[voxels].astype(np.uint8)
-
-        if self.use_voxels:
-            invalid_voxels = unpack(np.fromfile(self._invalid_list[scene_id][idx_range[-1]], 
-                            dtype=np.uint8)).reshape(self.grid_dims.astype(np.int))
-            occupied_voxels= unpack(np.fromfile(
-                    self._occupied_list[scene_id][idx_range[-1]], dtype=np.uint8
-                )).reshape(self.grid_dims.astype(np.int))
-
         ego_pose = self.get_pose(scene_id, idx_range[-1])
         to_ego   = np.linalg.inv(ego_pose)
         
-        aug_index = np.random.randint(0,3) # Set end idx to 6 to do rotations
-
+        aug_index = np.random.randint(0,6) # Set end idx to 6 to do rotations
         aug_mat = self.get_aug_matrix(aug_index)
+
         for i in idx_range:
             if i == -1: # Zero pad
                 points = np.zeros((1, 3), dtype=np.float16)
@@ -297,17 +256,13 @@ class Rellis3dDataset(Dataset):
             else:
                 points = np.fromfile(self._velodyne_list[scene_id][i], 
                     dtype=np.float32).reshape(-1,4)[:, :3]
+                gt_labels = np.fromfile(self._label_list[scene_id][i], dtype=np.uint32).reshape((-1)).astype(np.uint8)
+                labels = np.fromfile(self._pred_list[scene_id][i], dtype=np.uint32).reshape((-1)).astype(np.uint8)
                 
                 if self.apply_transform:
                     to_world   = self.get_pose(scene_id, i)
-                    to_world = to_world
                     relative_pose = np.matmul(to_ego, to_world)
-
                     points = np.dot(relative_pose[:3, :3], points.T).T + relative_pose[:3, 3]
-
-                gt_labels = np.fromfile(self._label_list[scene_id][i], dtype=np.uint32).reshape((-1)).astype(np.uint8)
-
-                labels = np.fromfile(self._pred_list[scene_id][i], dtype=np.uint32).reshape((-1)).astype(np.uint8)
 
                 # Filter points outside of voxel grid
                 grid_point_mask= np.all(
@@ -330,29 +285,18 @@ class Rellis3dDataset(Dataset):
                 if self.use_aug:  
                     points = (aug_mat @ points.T).T
 
-                gt_labels = gt_labels.reshape(-1, 1)
                 labels = labels.reshape(-1, 1)
 
-                points = points.astype(np.float16) #[:, [1, 0, 2]]
+                points = points.astype(np.float16)
                 labels = labels.astype(np.uint8)
 
-                if not self.use_voxels and i==idx_range[-1]:
-                    current_gt_label = gt_labels.astype(np.uint8)
-
-
-            # Save augmentation to avoid duplicating voxel data
             current_points.append(points)
             current_labels.append(labels)
-            
-        # Align voxels with augmented points
-        if self.use_aug and self.use_voxels:
-            voxels = self.get_voxel_aug(voxels, aug_index)
-            invalid_voxels = self.get_voxel_aug(invalid_voxels, aug_index)
 
-        if self.use_voxels:
-            return current_points, current_labels, voxels, invalid_voxels, occupied_voxels
-        else:
-            return current_points, current_labels, voxels
+        # Save last gt label to use for evaluation
+        current_gt_label = gt_labels.astype(np.uint8).reshape(-1, 1)
+
+        return current_points, current_labels, current_gt_label
 
     def find_horizon(self, scene_id, idx):
         end_idx = idx
@@ -360,7 +304,6 @@ class Rellis3dDataset(Dataset):
         diffs = np.asarray([int(self._frames_list[scene_id][end_idx]) \
             - int(self._frames_list[scene_id][i]) for i in idx_range])
         good_diffs = -1 * (np.arange(- self._num_frames, 0) + 1)
-        # print("idx range ", idx_range)
         idx_range[good_diffs != diffs] = -1
 
         return idx_range

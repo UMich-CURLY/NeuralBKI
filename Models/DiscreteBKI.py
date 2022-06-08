@@ -47,8 +47,10 @@ class DiscreteBKI(torch.nn.Module):
         assert(self.filter_size % 2 == 1)
         middle_ind = torch.floor(self.filter_size / 2)
         
-        self.sigma = torch.nn.Parameter(torch.tensor(1.0)) # Kernel must map to 0 to 1
-        self.ell = torch.nn.Parameter(torch.tensor(self.max_dist)) # Max distance to consider
+        # self.sigma = torch.nn.Parameter(torch.tensor(1.0)) # Kernel must map to 0 to 1
+        # self.ell = torch.nn.Parameter(torch.tensor(self.max_dist)) # Max distance to consider
+        self.sigma = torch.tensor(1.0) # Kernel must map to 0 to 1
+        self.ell = torch.tensor(self.max_dist) # Max distance to consider
         
         for x_ind in range(self.filter_size):
             for y_ind in range(self.filter_size):

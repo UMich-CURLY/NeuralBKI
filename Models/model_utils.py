@@ -10,25 +10,25 @@ from Models.DiscreteBKI import DiscreteBKI
 CLASS_COUNTS_REMAPPED = np.array([
     0,         # Marked as zero because void is filtered out 
     0,   
-    74318204,    
-    22488469,          
-    8791,          
-    18146,
+    257352935,    
+    64627941,          
+    16752,          
+    224016,
     0,          
     0,          
     0,          
-    10,          
+    0,          
     0,      
-    165493,
+    539944,
     0,          
-    893182,   
-    29060462,     
-    6046058,     
-    355384,     
-    269356,
-    951300,     
-    905264,  
-    839469936
+    1543817,   
+    158171883,     
+    9730727,     
+    3474123,     
+    1478073,
+    5743794,     
+    3345519,  
+    0
 ], dtype=np.long)
 
 def setup_seed(seed=42):
@@ -40,11 +40,12 @@ def setup_seed(seed=42):
 def get_model(model_name, grid_params, device):
     # Model parameters
     if model_name == "DiscreteBKI":
-        B = 20
+        B = 40
         model = DiscreteBKI(
             torch.tensor(grid_params['grid_size'], dtype=torch.long).to(device), # Grid size
             torch.tensor(grid_params['min_bound']).to(device), # Lower bound
             torch.tensor(grid_params['max_bound']).to(device), # Upper bound
+            filter_size=5,
             device=device,
             datatype=torch.float32
         )
