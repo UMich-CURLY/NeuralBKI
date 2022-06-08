@@ -181,7 +181,7 @@ class Rellis3dDataset(Dataset):
 
     # Use all frames, if there is no data then zero pad
     def __len__(self):
-        return self._num_frames_scene
+        return 80 #self._num_frames_scene
     
     def collate_fn(self, data):
         if self.use_voxels:
@@ -352,7 +352,7 @@ class Rellis3dDataset(Dataset):
         if self.use_voxels:
             return current_points, current_labels, voxels, invalid_voxels, occupied_voxels
         else:
-            return current_points, current_labels, current_gt_label
+            return current_points, current_labels, voxels
 
     def find_horizon(self, scene_id, idx):
         end_idx = idx
