@@ -56,7 +56,7 @@ LABELS_REMAP = np.array([
 ], dtype=np.uint8)
 
 DYNAMIC_LABELS = np.array([
-    0, 7, 8, 12
+    0, 20 # 7, 8, 12
 ])
 
 colors = np.array([ # RGB

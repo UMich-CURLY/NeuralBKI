@@ -30,6 +30,40 @@ def unpack(compressed):
 
     return uncompressed
 
+def ray_trace_batch(points, labels, sample_spacing, device="cpu"):
+    # curr_time = time.time()
+    use_np = isinstance(points, np.ndarray)
+    # Compute samples using array broadcasting
+    if use_np:
+        points = torch.from_numpy(points).to(device=device, dtype=torch.float16)
+        labels = torch.from_numpy(labels).to(device=device, dtype=torch.uint8).reshape(-1)
+    unit_vec = torch.linalg.norm(points, axis=1).reshape(-1, 1)
+    unit_vec = (points / unit_vec).reshape(-1, 1, 3)
+
+    difs = torch.arange(0.0, 100.0, sample_spacing, device=device, dtype=torch.float16).reshape(1, -1, 1)
+    difs = unit_vec * difs
+    new_samples = points.reshape(-1, 1, 3) - difs
+
+    # Create labels
+    new_labels = torch.ones((new_samples.shape[0], new_samples.shape[1]),
+        device=device, dtype=torch.uint8) * LABELS_REMAP[-1]
+
+    new_labels[:, 0] = labels
+    new_labels = new_labels.reshape(-1)
+
+    # Remove points with dist < 0
+    vec_dists = new_samples / unit_vec
+
+    good_samples = new_samples[vec_dists[:, :, 0] > 0].reshape(-1, 3)
+    good_labels = new_labels[vec_dists[:, :, 0].reshape(-1) > 0]
+
+    good_samples = good_samples.detach().cpu().numpy()
+    good_labels = good_labels.detach().cpu().numpy().reshape(-1, 1)
+    good_pc = np.hstack((good_samples, good_labels))
+    # print("Elapsed time for 4 ", time.time() - curr_time)
+    torch.cuda.empty_cache()
+    return good_pc
+
 class Rellis3dDataset(Dataset):
     """Rellis3D Dataset for Neural BKI project
     
@@ -40,7 +74,6 @@ class Rellis3dDataset(Dataset):
         device='cuda',
         num_frames=20,
         remap=True,
-        use_gt=False,
         use_aug=True,
         apply_transform=True,
         model_name="salsa",
@@ -54,10 +87,9 @@ class Rellis3dDataset(Dataset):
         self._num_frames = num_frames
         self.device = device
         self.remap = remap
-        self.use_gt = use_gt
         self.use_aug = use_aug
         self.apply_transform = apply_transform
-        
+
         self._scenes = [ s for s in sorted(os.listdir(self._directory)) if s.isdigit() ]
  
         self._num_scenes = len(self._scenes)
@@ -146,17 +178,17 @@ class Rellis3dDataset(Dataset):
     def collate_fn(self, data):
         output_batch = [bi[0] for bi in data]
         label_batch = [bi[1] for bi in data]
-        gt_label_batch = [bi[2] for bi in data]
-        return output_batch, label_batch, gt_label_batch, None, None
+        voxel_batch = [bi[2] for bi in data]
+        invalid_batch = [bi[3] for bi in data]
+        occupied_batch = [bi[4] for bi in data]
+        return output_batch, label_batch, voxel_batch, invalid_batch, occupied_batch
 
-    def points_to_voxels(self, voxel_grid, points, mask_points=True):
-        if mask_points:
-            # Valid voxels (make sure to clip)
-            valid_point_mask= np.all(
-                (points < self.max_bound) & (points >= self.min_bound), axis=1)
-            valid_points = points[valid_point_mask, :]
-        else:
-            valid_points = points
+    def points_to_voxels(self, voxel_grid, points):
+        # Valid voxels (make sure to clip)
+        valid_point_mask= np.all(
+            (points < self.max_bound) & (points >= self.min_bound), axis=1)
+        valid_points = points[valid_point_mask, :]
+
         voxels = np.floor((valid_points - self.min_bound) / self.voxel_sizes).astype(np.int)
         # Clamp to account for any floating point errors
         maxes = np.reshape(self.grid_dims - 1, (1, 3))
@@ -168,6 +200,22 @@ class Rellis3dDataset(Dataset):
 
     def get_file_path(self, idx):
         print(self._frames_list[idx])
+
+    def get_voxel_aug(self, t, state):
+        if state == 1:
+            aug_t = np.flip(t, [0]) # XZ
+        elif state == 2:
+            aug_t = np.flip(t, [1]) # YZ
+        elif state == 3:
+            aug_t = np.rot90(t, 1, [0, 1])
+        elif state == 4:
+            aug_t = np.rot90(t, 2, [0, 1])
+        elif state == 5:
+            aug_t = np.rot90(t, 3, [0, 1])
+        else:
+            aug_t = t
+
+        return aug_t
 
     def get_aug_matrix(self, trans):
         """
@@ -205,7 +253,18 @@ class Rellis3dDataset(Dataset):
 
         current_points = []
         current_labels = []
-        current_gt_label = None
+
+        voxels = np.fromfile(
+                self._voxel_label_list[scene_id][idx_range[-1]], dtype=np.uint8
+            ).reshape(self.grid_dims.astype(np.int))
+        if self.remap:
+            voxels = LABELS_REMAP[voxels].astype(np.uint8)
+
+        invalid_voxels = unpack(np.fromfile(self._invalid_list[scene_id][idx_range[-1]], 
+                        dtype=np.uint8)).reshape(self.grid_dims.astype(np.int))
+        occupied_voxels= unpack(np.fromfile(
+                self._occupied_list[scene_id][idx_range[-1]], dtype=np.uint8
+            )).reshape(self.grid_dims.astype(np.int))
 
         ego_pose = self.get_pose(scene_id, idx_range[-1])
         to_ego   = np.linalg.inv(ego_pose)
@@ -220,8 +279,10 @@ class Rellis3dDataset(Dataset):
             else:
                 points = np.fromfile(self._velodyne_list[scene_id][i], 
                     dtype=np.float32).reshape(-1,4)[:, :3]
-                gt_labels = np.fromfile(self._label_list[scene_id][i], dtype=np.uint32).reshape((-1)).astype(np.uint8)
-                labels = np.fromfile(self._pred_list[scene_id][i], dtype=np.uint32).reshape((-1)).astype(np.uint8)
+                gt_labels = np.fromfile(self._label_list[scene_id][i], 
+                    dtype=np.uint32).reshape((-1)).astype(np.uint8)
+                labels = np.fromfile(self._pred_list[scene_id][i], 
+                    dtype=np.uint32).reshape((-1)).astype(np.uint8)
                 
                 if self.apply_transform:
                     to_world   = self.get_pose(scene_id, i)
@@ -242,7 +303,6 @@ class Rellis3dDataset(Dataset):
                 # Ego vehicle = 0
                 valid_point_mask = np.isin(gt_labels, DYNAMIC_LABELS, invert=True)
                 points = points[valid_point_mask]
-                gt_labels = gt_labels[valid_point_mask]
                 labels = labels[valid_point_mask]
 
                 # Perform data augmentation on points
@@ -257,10 +317,13 @@ class Rellis3dDataset(Dataset):
             current_points.append(points)
             current_labels.append(labels)
 
-        # Save last gt label to use for evaluation
-        current_gt_label = gt_labels.astype(np.uint8).reshape(-1, 1)
+        # Align voxels with augmented points
+        if self.use_aug:
+            voxels = self.get_voxel_aug(voxels, aug_index)
+            invalid_voxels = self.get_voxel_aug(invalid_voxels, aug_index)
+            occupied_voxels= self.get_voxel_aug(occupied_voxels, aug_index)
 
-        return current_points, current_labels, current_gt_label
+        return current_points, current_labels, voxels, invalid_voxels, occupied_voxels
 
     def find_horizon(self, scene_id, idx):
         end_idx = idx

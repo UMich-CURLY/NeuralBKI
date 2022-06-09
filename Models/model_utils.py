@@ -15,12 +15,12 @@ CLASS_COUNTS_REMAPPED = np.array([
     16752,          
     224016,
     0,          
-    0,          
+    75812,          
     0,          
     0,          
     0,      
     539944,
-    0,          
+    10538966,          
     1543817,   
     158171883,     
     9730727,     
@@ -45,7 +45,19 @@ def get_model(model_name, grid_params, device):
             torch.tensor(grid_params['grid_size'], dtype=torch.long).to(device), # Grid size
             torch.tensor(grid_params['min_bound']).to(device), # Lower bound
             torch.tensor(grid_params['max_bound']).to(device), # Upper bound
-            filter_size=5,
+            filter_size=3,
+            device=device,
+            datatype=torch.float32
+        )
+        model.initialize_kernel()
+        decayRate = 0.96
+    elif model_name == "DiscreteBKI_SSC":
+        B = 16
+        model = DiscreteBKI(
+            torch.tensor(grid_params['grid_size'], dtype=torch.long).to(device), # Grid size
+            torch.tensor(grid_params['min_bound']).to(device), # Lower bound
+            torch.tensor(grid_params['max_bound']).to(device), # Upper bound
+            filter_size=3,
             device=device,
             datatype=torch.float32
         )
