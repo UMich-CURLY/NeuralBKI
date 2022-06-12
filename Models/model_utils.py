@@ -38,14 +38,15 @@ def setup_seed(seed=42):
     random.seed(seed)
 
 def get_model(model_name, grid_params, device):
+ 
     # Model parameters
     if model_name == "DiscreteBKI":
-        B = 40
+        B = 16
         model = DiscreteBKI(
             torch.tensor(grid_params['grid_size'], dtype=torch.long).to(device), # Grid size
             torch.tensor(grid_params['min_bound']).to(device), # Lower bound
             torch.tensor(grid_params['max_bound']).to(device), # Upper bound
-            filter_size=3,
+            filter_size=5,
             device=device,
             datatype=torch.float32
         )

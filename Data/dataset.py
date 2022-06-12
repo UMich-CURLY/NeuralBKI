@@ -10,6 +10,7 @@ import json
 from sklearn.metrics import homogeneity_completeness_v_measure
 
 import torch
+from torch import gt
 import torch.nn.functional as F
 from torch.utils.data import Dataset
 
@@ -40,7 +41,6 @@ class Rellis3dDataset(Dataset):
         device='cuda',
         num_frames=20,
         remap=True,
-        use_gt=False,
         use_aug=True,
         apply_transform=True,
         model_name="salsa",
@@ -50,11 +50,11 @@ class Rellis3dDataset(Dataset):
         Parameters:
             directory: directory to the dataset
         '''
+
         self._directory = directory
         self._num_frames = num_frames
         self.device = device
         self.remap = remap
-        self.use_gt = use_gt
         self.use_aug = use_aug
         self.apply_transform = apply_transform
         
@@ -63,23 +63,6 @@ class Rellis3dDataset(Dataset):
         self._num_scenes = len(self._scenes)
         self._num_frames_scene = 0
         self._num_labels = LABELS_REMAP.shape[0]
-
-        param_file = os.path.join(self._directory, self._scenes[4], 'params.json')
-        with open(param_file) as f:
-            self._eval_param = json.load(f)
-        
-        self._out_dim = self._eval_param['num_channels']
-        self._grid_size = self._eval_param['grid_size']
-        self.grid_dims = np.asarray(self._grid_size)
-        self._eval_size = list(np.uint32(self._grid_size))
-        
-        self.coor_ranges = self._eval_param['min_bound'] + self._eval_param['max_bound']
-        self.voxel_sizes = [abs(self.coor_ranges[3] - self.coor_ranges[0]) / self._grid_size[0], 
-                      abs(self.coor_ranges[4] - self.coor_ranges[1]) / self._grid_size[1],
-                      abs(self.coor_ranges[5] - self.coor_ranges[2]) / self._grid_size[2]]
-        self.min_bound = np.asarray(self.coor_ranges[:3])
-        self.max_bound = np.asarray(self.coor_ranges[3:])
-        self.voxel_sizes = np.asarray(self.voxel_sizes)
 
         self._velodyne_list = []
         self._label_list = []
@@ -93,6 +76,19 @@ class Rellis3dDataset(Dataset):
         self._num_frames_by_scene = []
 
         split_dir = os.path.join(self._directory, "pt_"+model_setting+".lst")
+
+        param_file = os.path.join(self._directory, self._scenes[4], 'params.json')
+        with open(param_file) as f:
+            self._eval_param = json.load(f)
+            self._grid_size = self._eval_param['grid_size']
+            self.grid_dims = np.asarray(self._grid_size)
+
+            self.coor_ranges = self._eval_param['min_bound'] + self._eval_param['max_bound']
+            self.voxel_sizes = np.asarray([abs(self.coor_ranges[3] - self.coor_ranges[0]) / self._grid_size[0],
+                                abs(self.coor_ranges[4] - self.coor_ranges[1]) / self._grid_size[1],
+                                abs(self.coor_ranges[5] - self.coor_ranges[2]) / self._grid_size[2]])
+            self.min_bound = np.asarray(self.coor_ranges[:3])
+            self.max_bound = np.asarray(self.coor_ranges[3:])
 
         # Generate list of scenes and indices to iterate over
         self._scenes_list = []
@@ -112,13 +108,11 @@ class Rellis3dDataset(Dataset):
 
             velodyne_dir = os.path.join(self._directory, scene_name, 'os1_cloud_node_kitti_bin')
             label_dir = os.path.join(self._directory, scene_name, 'os1_cloud_node_semantickitti_label_id')
-            voxel_dir = os.path.join(self._directory, scene_name, 'voxels')
             pred_dir = os.path.join(self._directory, scene_name, model_name, 'os1_cloud_node_semantickitti_label_id')
             
             # Load all poses and frame indices regardless of mode
-            self._poses.append( np.loadtxt(os.path.join(self._directory, scene_name, 'poses.txt')).reshape(-1, 12) )
-            self._frames_list.append([ \
-                os.path.splitext(filename)[0] for filename in sorted(os.listdir(velodyne_dir))])
+            self._poses.append(np.loadtxt(os.path.join(self._directory, scene_name, 'poses.txt')).reshape(-1, 12) )
+            self._frames_list.append([os.path.splitext(filename)[0] for filename in sorted(os.listdir(velodyne_dir))])
             self._num_frames_by_scene.append(len(self._frames_list[scene_id]))
 
             # PC inputs
@@ -128,13 +122,6 @@ class Rellis3dDataset(Dataset):
                 str(frame).zfill(6)+'.label') for frame in self._frames_list[scene_id]] )
             self._pred_list.append( [os.path.join(pred_dir, 
                 str(frame).zfill(6)+'.label') for frame in self._frames_list[scene_id]] )
-            # Voxel ground truths
-            self._voxel_label_list.append( [os.path.join(voxel_dir, 
-                str(frame).zfill(6)+'.label') for frame in self._frames_list[scene_id]] )
-            self._occupied_list.append( [os.path.join(voxel_dir, 
-                str(frame).zfill(6)+'.bin') for frame in self._frames_list[scene_id]] )
-            self._invalid_list.append( [os.path.join(voxel_dir, 
-                str(frame).zfill(6)+'.invalid') for frame in self._frames_list[scene_id]] )
 
         # Get number of frames to iterate over
         self._num_frames_scene = len(self._index_list)
@@ -144,27 +131,10 @@ class Rellis3dDataset(Dataset):
         return self._num_frames_scene
     
     def collate_fn(self, data):
-        output_batch = [bi[0] for bi in data]
+        points_batch = [bi[0] for bi in data]
         label_batch = [bi[1] for bi in data]
         gt_label_batch = [bi[2] for bi in data]
-        return output_batch, label_batch, gt_label_batch, None, None
-
-    def points_to_voxels(self, voxel_grid, points, mask_points=True):
-        if mask_points:
-            # Valid voxels (make sure to clip)
-            valid_point_mask= np.all(
-                (points < self.max_bound) & (points >= self.min_bound), axis=1)
-            valid_points = points[valid_point_mask, :]
-        else:
-            valid_points = points
-        voxels = np.floor((valid_points - self.min_bound) / self.voxel_sizes).astype(np.int)
-        # Clamp to account for any floating point errors
-        maxes = np.reshape(self.grid_dims - 1, (1, 3))
-        mins = np.zeros_like(maxes)
-        voxels = np.clip(voxels, mins, maxes).astype(np.int)
-
-        voxel_grid = voxel_grid[voxels[:, 0], voxels[:, 1], voxels[:, 2]]
-        return voxel_grid
+        return points_batch, label_batch, gt_label_batch
 
     def get_file_path(self, idx):
         print(self._frames_list[idx])
@@ -205,70 +175,66 @@ class Rellis3dDataset(Dataset):
 
         current_points = []
         current_labels = []
-        current_gt_label = None
 
         ego_pose = self.get_pose(scene_id, idx_range[-1])
         to_ego   = np.linalg.inv(ego_pose)
         
-        aug_index = np.random.randint(0,6) # Set end idx to 6 to do rotations
+        aug_index = np.random.randint(0,3) # Set end idx to 6 to do rotations
+
         aug_mat = self.get_aug_matrix(aug_index)
 
+        gt_labels = None
         for i in idx_range:
             if i == -1: # Zero pad
                 points = np.zeros((1, 3), dtype=np.float16)
                 labels = np.zeros((1,), dtype=np.uint8)
             else:
-                points = np.fromfile(self._velodyne_list[scene_id][i], 
-                    dtype=np.float32).reshape(-1,4)[:, :3]
-                gt_labels = np.fromfile(self._label_list[scene_id][i], dtype=np.uint32).reshape((-1)).astype(np.uint8)
-                labels = np.fromfile(self._pred_list[scene_id][i], dtype=np.uint32).reshape((-1)).astype(np.uint8)
+                points = np.fromfile(self._velodyne_list[scene_id][i], dtype=np.float32).reshape(-1,4)[:, :3]
                 
                 if self.apply_transform:
                     to_world   = self.get_pose(scene_id, i)
+                    to_world = to_world
                     relative_pose = np.matmul(to_ego, to_world)
+
                     points = np.dot(relative_pose[:3, :3], points.T).T + relative_pose[:3, 3]
 
+                temp_gt_labels = np.fromfile(self._label_list[scene_id][i], dtype=np.uint32).reshape((-1)).astype(np.uint8)
+                labels = np.fromfile(self._pred_list[scene_id][i], dtype=np.uint32).reshape((-1)).astype(np.uint8)
+
+                # Perform data augmentation on points
+                if self.use_aug:
+                    points = (aug_mat @ points.T).T
+
                 # Filter points outside of voxel grid
-                grid_point_mask= np.all(
+                grid_point_mask = np.all(
                     (points < self.max_bound) & (points >= self.min_bound), axis=1)
                 points = points[grid_point_mask, :]
-                gt_labels = gt_labels[grid_point_mask]
+                temp_gt_labels = temp_gt_labels[grid_point_mask]
                 labels = labels[grid_point_mask]
                 
                 if self.remap:
-                    gt_labels = LABELS_REMAP[gt_labels].astype(np.uint8)
+                    temp_gt_labels = LABELS_REMAP[temp_gt_labels].astype(np.uint8)
                     labels = LABELS_REMAP[labels].astype(np.uint8)
 
-                # Ego vehicle = 0
-                valid_point_mask = np.isin(gt_labels, DYNAMIC_LABELS, invert=True)
-                points = points[valid_point_mask]
-                gt_labels = gt_labels[valid_point_mask]
-                labels = labels[valid_point_mask]
-
-                # Perform data augmentation on points
-                if self.use_aug:  
-                    points = (aug_mat @ points.T).T
+                if i == idx_range[-1]:
+                    gt_labels = temp_gt_labels
 
                 labels = labels.reshape(-1, 1)
 
-                points = points.astype(np.float16)
+                points = points.astype(np.float32) #[:, [1, 0, 2]]
                 labels = labels.astype(np.uint8)
 
             current_points.append(points)
             current_labels.append(labels)
 
-        # Save last gt label to use for evaluation
-        current_gt_label = gt_labels.astype(np.uint8).reshape(-1, 1)
-
-        return current_points, current_labels, current_gt_label
+        return current_points, current_labels, gt_labels.astype(np.uint8).reshape(-1, 1)
 
     def find_horizon(self, scene_id, idx):
         end_idx = idx
         idx_range = np.arange(idx- self._num_frames, idx)+1
-        diffs = np.asarray([int(self._frames_list[scene_id][end_idx]) \
-            - int(self._frames_list[scene_id][i]) for i in idx_range])
+        diffs = np.asarray([int(self._frames_list[scene_id][end_idx])
+                            - int(self._frames_list[scene_id][i]) for i in idx_range])
         good_diffs = -1 * (np.arange(- self._num_frames, 0) + 1)
         idx_range[good_diffs != diffs] = -1
 
         return idx_range
-

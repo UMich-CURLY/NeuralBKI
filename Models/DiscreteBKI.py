@@ -69,6 +69,11 @@ class DiscreteBKI(torch.nn.Module):
         weights = torch.tensor(weights, dtype=self.dtype, device=self.device).view(
             1, 1, self.filter_size, self.filter_size, self.filter_size)
         # pdb.set_trace()
+
+        # Random Initialization
+        torch.nn.init.normal_(weights, mean=0, std=0.1)
+        middle_ind = middle_ind.long()
+        weights[:, :, middle_ind, middle_ind, middle_ind] = 1.0
         self.weights = torch.nn.Parameter(weights)
 
     def inverse_sigmoid(self, x):
@@ -111,8 +116,7 @@ class DiscreteBKI(torch.nn.Module):
         clipped_inds = torch.clamp(grid_inds, torch.zeros_like(maxes), maxes)
         
         return torch.hstack( (clipped_inds, valid_labels) )
-        
-        
+
     def forward(self, current_map, point_cloud):
         '''
         Input:
@@ -140,7 +144,7 @@ class DiscreteBKI(torch.nn.Module):
         # )
         mid = torch.floor(self.filter_size / 2).to(torch.long)
         filters = self.bki_conv_filter(self.weights, mid)
-  
+
         # filters[0, 0, mid, mid, mid] = 1
         update = torch.unsqueeze(update.permute(3, 0, 1, 2), 1)
         update = F.conv3d(update, filters, padding="same")

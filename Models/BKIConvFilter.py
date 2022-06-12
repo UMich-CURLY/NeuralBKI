@@ -31,4 +31,6 @@ class BKIConvFilter(torch.autograd.Function):
         gw = torch.sigmoid(weights) * (1 - torch.sigmoid(weights))
         gw[0, 0, mid, mid, mid] = 0
         gm = None
+        # print((upstream_grad * gw)[0, 0, mid-1:mid+2, mid-1:mid+2, mid])
+        # print(torch.sigmoid(weights[0, 0, mid-1:mid+2, mid-1:mid+2, mid]))
         return upstream_grad * gw, gm

@@ -173,7 +173,7 @@ class Rellis3dDataset(Dataset):
 
     # Use all frames, if there is no data then zero pad
     def __len__(self):
-        return self._num_frames_scene
+        return 80 #self._num_frames_scene
     
     def collate_fn(self, data):
         output_batch = [bi[0] for bi in data]

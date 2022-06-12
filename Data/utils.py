@@ -59,6 +59,10 @@ DYNAMIC_LABELS = np.array([
     0, 20 # 7, 8, 12
 ])
 
+LOSS_MASK_LABELS = np.array([
+    0, 20
+])
+
 colors = np.array([ # RGB
     (0,0,0),        #0void
     (108, 64, 20),  #1dirt
