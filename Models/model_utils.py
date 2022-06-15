@@ -6,6 +6,7 @@ from torch import empty
 from torch import long
 
 from Models.DiscreteBKI import DiscreteBKI
+from Models.DiscreteBKI_Kernel import DiscreteBKI_Kernel
 
 CLASS_COUNTS_REMAPPED = np.array([
     0,         # Marked as zero because void is filtered out 
@@ -37,6 +38,7 @@ def setup_seed(seed=42):
     np.random.seed(seed)
     random.seed(seed)
 
+
 def get_model(model_name, grid_params, device):
     # Model parameters
     if model_name == "DiscreteBKI":
@@ -50,7 +52,20 @@ def get_model(model_name, grid_params, device):
             datatype=torch.float32,
             kernel="random"
         )
-        model.initialize_kernel()
+        decayRate = 0.96
+    elif model_name == "DiscreteBKI_Kernel":
+        B = 1
+        model = DiscreteBKI_Kernel(
+            torch.tensor(grid_params['grid_size'], dtype=torch.long).to(device), # Grid size
+            torch.tensor(grid_params['min_bound']).to(device), # Lower bound
+            torch.tensor(grid_params['max_bound']).to(device), # Upper bound
+            filter_size=15,
+            device=device,
+            datatype=torch.float32,
+            kernel="sparse",
+            max_dist=0.3,
+            per_class=True
+        )
         decayRate = 0.96
     elif model_name == "DiscreteBKI_SSC":
         B = 16
@@ -62,7 +77,6 @@ def get_model(model_name, grid_params, device):
             device=device,
             datatype=torch.float32
         )
-        model.initialize_kernel()
         decayRate = 0.96
     else:
         print("Please choose either DiscreteBKI, Neural Blox, or Conv Occupancy. Thank you.")

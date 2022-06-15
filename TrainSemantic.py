@@ -18,6 +18,7 @@ from Benchmarks.eval_utils import iou_one_frame
 from Data.utils import *
 from Models.model_utils import *
 from Models.DiscreteBKI import *
+from Models.DiscreteBKI_Kernel import *
 from Models.FocalLoss import FocalLoss
 from Data.SemanticSegmentation import Rellis3dDataset
 
@@ -45,8 +46,8 @@ dataset_loc = os.path.join(home_dir, "Data/Rellis-3D")
 SEED = 42
 NUM_CLASSES = colors.shape[0]
 TRAIN_DIR = dataset_loc
-NUM_FRAMES = 10
-MODEL_NAME = "DiscreteBKI"
+NUM_FRAMES = 3
+MODEL_NAME = "DiscreteBKI_Kernel"
 model_name = MODEL_NAME + "_" + str(NUM_CLASSES)
 
 MODEL_RUN_DIR = os.path.join("Models", "Runs", model_name)
@@ -75,7 +76,7 @@ with open(model_params_file) as f:
     grid_params['grid_size'] = [ int(p) for p in grid_params['grid_size'] ]
 
 # Load model
-lr = 7e0
+lr = 7e-3
 BETA1 = 0.9
 BETA2 = 0.999
 model, B, decayRate = get_model(MODEL_NAME, grid_params=grid_params, device=device)
@@ -98,11 +99,10 @@ writer = SummaryWriter(os.path.join(MODEL_RUN_DIR, "t"+TRIAL_NUM))
 
 # Optimizer setup
 setup_seed(SEED)
-# optimizer = optim.Adam(model.parameters(), lr=lr, betas=(BETA1, BETA2))
-optimizer = optim.SGD(model.parameters(), lr=lr)
+optimizer = optim.Adam(model.parameters(), lr=lr, betas=(BETA1, BETA2))
+# optimizer = optim.SGD(model.parameters(), lr=lr)
 my_lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=optimizer, gamma=decayRate)
-# torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer,
-#     T_max=100, eta_min=1e-4, verbose=True)
+torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=100, eta_min=1e-4, verbose=True)
 
 train_count = 0
 min_bound_torch = torch.from_numpy(rellis_ds.min_bound).to(device=device)
@@ -162,10 +162,7 @@ def semantic_loop(dataloader, epoch, train_count=None, training=False):
 
         if training:
             loss.backward()
-            # print(model.weights.grad)
             optimizer.step()
-            # if train_count % 100 == 0:
-            #     print(torch.sigmoid(model.weights[0, 0, :, :, :]))
 
         # Accuracy
         with torch.no_grad():
@@ -208,9 +205,9 @@ def semantic_loop(dataloader, epoch, train_count=None, training=False):
 
 for epoch in range(EPOCH_NUM):
     # Start with validation
-    model.eval()
-    with torch.no_grad():
-        semantic_loop(dataloader_val, epoch, training=False)
+    # model.eval()
+    # with torch.no_grad():
+    #     semantic_loop(dataloader_val, epoch, training=False)
 
     # Training
     model.train()
