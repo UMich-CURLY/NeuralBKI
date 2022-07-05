@@ -7,6 +7,7 @@ import math
 import numpy as np
 import random
 import json
+import yaml
 from sklearn.metrics import homogeneity_completeness_v_measure
 
 import torch
@@ -31,12 +32,14 @@ def unpack(compressed):
 
     return uncompressed
 
+
 class Rellis3dDataset(Dataset):
     """Rellis3D Dataset for Neural BKI project
     
     Access to the processed data, including evaluation labels predictions velodyne poses times
     """
-    def __init__(self, 
+    def __init__(self,
+        grid_params,
         directory,
         device='cuda',
         num_frames=20,
@@ -62,7 +65,6 @@ class Rellis3dDataset(Dataset):
  
         self._num_scenes = len(self._scenes)
         self._num_frames_scene = 0
-        self._num_labels = LABELS_REMAP.shape[0]
 
         self._velodyne_list = []
         self._label_list = []
@@ -77,18 +79,27 @@ class Rellis3dDataset(Dataset):
 
         split_dir = os.path.join(self._directory, "pt_"+model_setting+".lst")
 
-        param_file = os.path.join(self._directory, self._scenes[4], 'params.json')
-        with open(param_file) as f:
-            self._eval_param = json.load(f)
-            self._grid_size = self._eval_param['grid_size']
-            self.grid_dims = np.asarray(self._grid_size)
+        data_params_file = os.path.join(os.getcwd(), "Config", "rellis.yaml")
+        with open(data_params_file, "r") as stream:
+            try:
+                data_params = yaml.safe_load(stream)
+                self._num_labels = data_params["num_classes"]
+                max_label = max([i for i in data_params["LABELS_REMAP"].keys()])
+                self.LABELS_REMAP = np.zeros(max_label + 1, dtype=np.long)
+                for v,k in data_params["LABELS_REMAP"].items():
+                    self.LABELS_REMAP[v] = k
+            except yaml.YAMLError as exc:
+                print(exc)
 
-            self.coor_ranges = self._eval_param['min_bound'] + self._eval_param['max_bound']
-            self.voxel_sizes = np.asarray([abs(self.coor_ranges[3] - self.coor_ranges[0]) / self._grid_size[0],
-                                abs(self.coor_ranges[4] - self.coor_ranges[1]) / self._grid_size[1],
-                                abs(self.coor_ranges[5] - self.coor_ranges[2]) / self._grid_size[2]])
-            self.min_bound = np.asarray(self.coor_ranges[:3])
-            self.max_bound = np.asarray(self.coor_ranges[3:])
+        self._grid_size = grid_params['grid_size']
+        self.grid_dims = np.asarray(self._grid_size)
+
+        self.coor_ranges = grid_params['min_bound'] + grid_params['max_bound']
+        self.voxel_sizes = np.asarray([abs(self.coor_ranges[3] - self.coor_ranges[0]) / self._grid_size[0],
+                            abs(self.coor_ranges[4] - self.coor_ranges[1]) / self._grid_size[1],
+                            abs(self.coor_ranges[5] - self.coor_ranges[2]) / self._grid_size[2]])
+        self.min_bound = np.asarray(self.coor_ranges[:3])
+        self.max_bound = np.asarray(self.coor_ranges[3:])
 
         # Generate list of scenes and indices to iterate over
         self._scenes_list = []
@@ -219,8 +230,8 @@ class Rellis3dDataset(Dataset):
                 labels = labels[void_mask]
                 
                 if self.remap:
-                    temp_gt_labels = LABELS_REMAP[temp_gt_labels].astype(np.uint8)
-                    labels = LABELS_REMAP[labels].astype(np.uint8)
+                    temp_gt_labels = self.LABELS_REMAP[temp_gt_labels].astype(np.uint8)
+                    labels = self.LABELS_REMAP[labels].astype(np.uint8)
 
                 if i == idx_range[-1]:
                     gt_labels = temp_gt_labels

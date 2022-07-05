@@ -1,0 +1,20 @@
+dataset: "rellis"
+
+train:
+  B: 8
+  num_epochs: 5
+  lr: 0.007
+  BETA1: 0.9
+  BETA2: 0.999
+  decayRate: 0.96
+  grid_params:
+    grid_size: [256.0, 256.0, 16.0]
+    min_bound: [-12.800000191469727, -12.800000191469727, -1.0]
+    max_bound: [12.800000191469727, 12.800000191469727, 0.6]
+filter_size: 15
+kernel: "sparse"
+ell: 0.3
+seed: 42
+
+num_frames: 3
+num_workers: 16

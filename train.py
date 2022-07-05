@@ -2,6 +2,7 @@ import os
 import pdb
 import time
 import json
+import yaml
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 import numpy as np
@@ -17,11 +18,10 @@ from torch.utils.tensorboard import SummaryWriter
 from Benchmarks.eval_utils import iou_one_frame
 from Data.utils import *
 from Models.model_utils import *
-from Models.DiscreteBKI import *
-from Models.DiscreteBKI_Kernel import *
-from Models.FocalLoss import FocalLoss
-from Data.SemanticSegmentation import Rellis3dDataset
+from Models.ConvBKI import *
+from Data.Rellis3D import Rellis3dDataset
 
+MODEL_NAME = "ConvBKI_PerClass"
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -33,62 +33,71 @@ else:
   end = None
 print("device is ", device)
 
-import rospy
-from visualization_msgs.msg import *
-rospy.init_node('talker',disable_signals=True)
-map_pub = rospy.Publisher('SemMap', MarkerArray, queue_size=10)
-pred_pub = rospy.Publisher('SemPredMap', MarkerArray, queue_size=10)
+# import rospy
+# from visualization_msgs.msg import *
+# rospy.init_node('talker',disable_signals=True)
+# map_pub = rospy.Publisher('SemMap', MarkerArray, queue_size=10)
+# pred_pub = rospy.Publisher('SemPredMap', MarkerArray, queue_size=10)
 
-home_dir = os.path.expanduser('~')
-dataset_loc = os.path.join(home_dir, "Data/Rellis-3D")
+model_params_file = os.path.join(os.getcwd(), "Config", MODEL_NAME + ".yaml")
+with open(model_params_file, "r") as stream:
+    try:
+        model_params = yaml.safe_load(stream)
+        dataset = model_params["dataset"]
+    except yaml.YAMLError as exc:
+        print(exc)
 
-#CONSTANTS
-SEED = 42
-NUM_CLASSES = colors.shape[0]
-TRAIN_DIR = dataset_loc
-NUM_FRAMES = 3
-MODEL_NAME = "DiscreteBKI_Kernel"
-model_name = MODEL_NAME + "_" + str(NUM_CLASSES)
-
-MODEL_RUN_DIR = os.path.join("Models", "Runs", model_name)
-if not os.path.exists(MODEL_RUN_DIR):
-    os.makedirs(MODEL_RUN_DIR)
-TRIAL_NUM = str(len(os.listdir(MODEL_RUN_DIR)))
-NUM_WORKERS = 16
-EPOCH_NUM = 500
+# CONSTANTS
+SEED = model_params["seed"]
+NUM_FRAMES = model_params["num_frames"]
+MODEL_RUN_DIR = os.path.join("Models", "Runs", MODEL_NAME + "_" + dataset)
+NUM_WORKERS = model_params["num_workers"]
 FLOAT_TYPE = torch.float32
 LABEL_TYPE = torch.uint8
 
+if not os.path.exists(MODEL_RUN_DIR):
+    os.makedirs(MODEL_RUN_DIR)
+TRIAL_NUM = str(len(os.listdir(MODEL_RUN_DIR)))
 
-#Model Parameters
-class_frequencies = CLASS_COUNTS_REMAPPED
+# Model Parameters
+data_params_file = os.path.join(os.getcwd(), "Config", dataset + ".yaml")
+with open(data_params_file, "r") as stream:
+    try:
+        data_params = yaml.safe_load(stream)
+        NUM_CLASSES = data_params["num_classes"]
+        class_frequencies = np.asarray([data_params["class_counts"][i] for i in range(NUM_CLASSES)])
+        TRAIN_DIR = data_params["data_dir"]
+    except yaml.YAMLError as exc:
+        print(exc)
+
 epsilon_w = 1e-5  # eps to avoid zero division
-weights = torch.from_numpy( \
-    (1 / np.log(class_frequencies + epsilon_w) )
-).to(dtype=FLOAT_TYPE, device=device)
+weights = torch.from_numpy( (1 / np.log(class_frequencies + epsilon_w) )).to(dtype=FLOAT_TYPE, device=device)
 
 criterion = nn.NLLLoss(weight=weights)
 # pdb.set_trace()
 scenes = [ s for s in sorted(os.listdir(TRAIN_DIR)) if s.isdigit() ]
-model_params_file = os.path.join(TRAIN_DIR, scenes[-1], 'params.json')
-with open(model_params_file) as f:
-    grid_params = json.load(f)
-    grid_params['grid_size'] = [ int(p) for p in grid_params['grid_size'] ]
 
 # Load model
-lr = 7e-3
-BETA1 = 0.9
-BETA2 = 0.999
-model, B, decayRate = get_model(MODEL_NAME, grid_params=grid_params, device=device)
+lr = model_params["train"]["lr"]
+BETA1 = model_params["train"]["BETA1"]
+BETA2 = model_params["train"]["BETA2"]
+decayRate = model_params["train"]["decayRate"]
+B = model_params["train"]["B"]
+EPOCH_NUM = model_params["train"]["num_epochs"]
+model_params["device"] = device
+model_params["num_classes"] = NUM_CLASSES
+model_params["datatype"] = FLOAT_TYPE
+model = get_model(MODEL_NAME, model_params=model_params)
 
-rellis_ds = Rellis3dDataset(directory=TRAIN_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=False)
-dataloader_train = DataLoader(rellis_ds, batch_size=B, shuffle=True, collate_fn=rellis_ds.collate_fn, num_workers=NUM_WORKERS)
+if dataset == "rellis":
+    train_ds = Rellis3dDataset(model_params["train"]["grid_params"], directory=TRAIN_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=False)
+    dataloader_train = DataLoader(train_ds, batch_size=B, shuffle=True, collate_fn=train_ds.collate_fn, num_workers=NUM_WORKERS)
 
-rellis_ds_val  = Rellis3dDataset(directory=TRAIN_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=False, model_setting="val")
-dataloader_val = DataLoader(rellis_ds_val, batch_size=B, shuffle=True, collate_fn=rellis_ds_val.collate_fn, num_workers=NUM_WORKERS)
+    val_ds  = Rellis3dDataset(model_params["train"]["grid_params"], directory=TRAIN_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=False, model_setting="val")
+    dataloader_val = DataLoader(val_ds, batch_size=B, shuffle=True, collate_fn=val_ds.collate_fn, num_workers=NUM_WORKERS)
 
 trial_dir = os.path.join(MODEL_RUN_DIR, "t"+TRIAL_NUM)
-save_dir = os.path.join("Models", "Weights", model_name, "t"+TRIAL_NUM)
+save_dir = os.path.join("Models", "Weights", MODEL_NAME + "_" + dataset, "t"+TRIAL_NUM)
 
 if not os.path.exists(trial_dir):
     os.makedirs(trial_dir)
@@ -105,10 +114,9 @@ my_lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=optimizer, ga
 torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=100, eta_min=1e-4, verbose=True)
 
 train_count = 0
-min_bound_torch = torch.from_numpy(rellis_ds.min_bound).to(device=device)
-grid_dims_torch = torch.from_numpy(rellis_ds.grid_dims).to(dtype=torch.int, device=device)
-print(rellis_ds.voxel_sizes)
-voxel_sizes_torch = torch.from_numpy(rellis_ds.voxel_sizes).to(device=device)
+min_bound_torch = torch.from_numpy(train_ds.min_bound).to(device=device)
+grid_dims_torch = torch.from_numpy(train_ds.grid_dims).to(dtype=torch.int, device=device)
+voxel_sizes_torch = torch.from_numpy(train_ds.voxel_sizes).to(device=device)
 
 
 def semantic_loop(dataloader, epoch, train_count=None, training=False):
@@ -116,10 +124,6 @@ def semantic_loop(dataloader, epoch, train_count=None, training=False):
     num_total = 0
     all_intersections = np.zeros(NUM_CLASSES)
     all_unions = np.zeros(NUM_CLASSES) + 1e-6  # SMOOTHING
-
-    salsa_correct = 0
-    salsa_intersections = np.zeros(NUM_CLASSES)
-    salsa_unions = np.zeros(NUM_CLASSES) + 1e-6  # SMOOTHING
 
     for points, points_labels, gt_labels in dataloader:
         batch_gt = torch.zeros((0, 1), device=device, dtype=LABEL_TYPE)
@@ -130,11 +134,8 @@ def semantic_loop(dataloader, epoch, train_count=None, training=False):
             current_map = model.initialize_grid()
 
             pc_np = np.vstack(np.array(points[b]))
-            # TEST
-            # labels_np = np.vstack(np.array(gt_labels[b]))
             labels_np = np.vstack(np.array(points_labels[b]))
             labeled_pc = np.hstack((pc_np, labels_np))
-            # print(np.sum(np.array(points_labels[b])[0, :, 0] == np.array(gt_labels[b])[:, 0]) / labeled_pc.shape[0])
 
             if labeled_pc.shape[0] == 0:  # Zero padded
                 print("Something is very wrong!")
@@ -163,6 +164,7 @@ def semantic_loop(dataloader, epoch, train_count=None, training=False):
         if training:
             loss.backward()
             optimizer.step()
+            print(model.ell)
 
         # Accuracy
         with torch.no_grad():
@@ -205,9 +207,9 @@ def semantic_loop(dataloader, epoch, train_count=None, training=False):
 
 for epoch in range(EPOCH_NUM):
     # Start with validation
-    # model.eval()
-    # with torch.no_grad():
-    #     semantic_loop(dataloader_val, epoch, training=False)
+    model.eval()
+    with torch.no_grad():
+        semantic_loop(dataloader_val, epoch, training=False)
 
     # Training
     model.train()
