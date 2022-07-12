@@ -20,6 +20,7 @@ from Data.utils import *
 from Models.model_utils import *
 from Models.ConvBKI import *
 from Data.Rellis3D import Rellis3dDataset
+from Data.SemanticKitti import KittiDataset
 
 MODEL_NAME = "ConvBKI_PerClass"
 
@@ -65,7 +66,15 @@ with open(data_params_file, "r") as stream:
     try:
         data_params = yaml.safe_load(stream)
         NUM_CLASSES = data_params["num_classes"]
-        class_frequencies = np.asarray([data_params["class_counts"][i] for i in range(NUM_CLASSES)])
+        print("Num classes: ", NUM_CLASSES)
+        if dataset == "semantic_kitti": # kitti has remap so we hard code the frequencies
+            class_frequencies = np.array([0, 1.57835390e+07, 1.25136000e+05, 1.18809000e+05,
+                                6.46799000e+05, 8.21951000e+05, 2.62978000e+05, 2.83696000e+05,
+                                2.04750000e+05, 6.16887030e+07, 4.50296100e+06, 4.48836500e+07,
+                                2.26992300e+06, 5.68402180e+07, 1.57196520e+07, 1.58442623e+08,
+                                2.06162300e+06, 3.69705220e+07, 1.15198800e+06, 3.34146000e+05], dtype=np.long)
+        else:
+            class_frequencies = np.asarray([data_params["class_counts"][i] for i in range(NUM_CLASSES)]) #TODO: kitti is slightly different here
         TRAIN_DIR = data_params["data_dir"]
     except yaml.YAMLError as exc:
         print(exc)
@@ -73,7 +82,10 @@ with open(data_params_file, "r") as stream:
 epsilon_w = 1e-5  # eps to avoid zero division
 weights = torch.from_numpy( (1 / np.log(class_frequencies + epsilon_w) )).to(dtype=FLOAT_TYPE, device=device)
 
-criterion = nn.NLLLoss(weight=weights)
+if dataset == "semantic_kitti":
+    criterion = nn.NLLLoss(weight=weights, ignore_index=255) #jingyu edit: ignore 255 in the look up table
+else:
+    criterion = nn.NLLLoss(weight=weights)
 # pdb.set_trace()
 scenes = [ s for s in sorted(os.listdir(TRAIN_DIR)) if s.isdigit() ]
 
@@ -96,6 +108,14 @@ if dataset == "rellis":
     val_ds  = Rellis3dDataset(model_params["train"]["grid_params"], directory=TRAIN_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=False, model_setting="val")
     dataloader_val = DataLoader(val_ds, batch_size=B, shuffle=True, collate_fn=val_ds.collate_fn, num_workers=NUM_WORKERS)
 
+if dataset == "semantic_kitti":
+    train_ds = KittiDataset(model_params["train"]["grid_params"], directory=TRAIN_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=False)
+    dataloader_train = DataLoader(train_ds, batch_size=B, shuffle=True, collate_fn=train_ds.collate_fn, num_workers=NUM_WORKERS)
+
+    val_ds  = KittiDataset(model_params["train"]["grid_params"], directory=TRAIN_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=False, split="valid")
+    dataloader_val = DataLoader(val_ds, batch_size=B, shuffle=True, collate_fn=val_ds.collate_fn, num_workers=NUM_WORKERS)
+    # pass # TODO
+
 trial_dir = os.path.join(MODEL_RUN_DIR, "t"+TRIAL_NUM)
 save_dir = os.path.join("Models", "Weights", MODEL_NAME + "_" + dataset, "t"+TRIAL_NUM)
 
@@ -103,6 +123,8 @@ if not os.path.exists(trial_dir):
     os.makedirs(trial_dir)
 if not os.path.exists(save_dir):
     os.makedirs(save_dir)
+
+training_log = open(os.path.join(trial_dir, "training_log.txt"), "a")
 
 writer = SummaryWriter(os.path.join(MODEL_RUN_DIR, "t"+TRIAL_NUM))
 
@@ -164,7 +186,9 @@ def semantic_loop(dataloader, epoch, train_count=None, training=False):
         if training:
             loss.backward()
             optimizer.step()
-            print(model.ell)
+            training_log.write(f'{str(model.ell.data)}\n')
+            training_log.flush()
+            # print(model.ell)
 
         # Accuracy
         with torch.no_grad():
@@ -193,15 +217,22 @@ def semantic_loop(dataloader, epoch, train_count=None, training=False):
     if training:
         my_lr_scheduler.step()
         print("Epoch ", epoch, " out of ", EPOCH_NUM, " complete.")
+        training_log.write("Epoch ", epoch, " out of ", EPOCH_NUM, " complete.")
+        training_log.write("\n")
+        training_log.flush()
+
 
     if not training:
         all_intersections = all_intersections[all_unions > 0]
         all_unions = all_unions[all_unions > 0]
         print(f'Epoch Num: {epoch} ------ average val accuracy: {num_correct/num_total}')
+        training_log.write(f'Epoch Num: {epoch} ------ average val accuracy: {num_correct/num_total}\n')
         print(f'Epoch Num: {epoch} ------ val miou: {np.mean(all_intersections / all_unions)}')
+        training_log.write(f'Epoch Num: {epoch} ------ val miou: {np.mean(all_intersections / all_unions)}')
+        training_log.flush()
         writer.add_scalar(MODEL_NAME + '/Accuracy/Val', num_correct/num_total, epoch)
         writer.add_scalar(MODEL_NAME + '/mIoU/Val', np.mean(all_intersections / all_unions), epoch)
-
+    
     return model, train_count
 
 
@@ -215,5 +246,5 @@ for epoch in range(EPOCH_NUM):
     model.train()
     idx = 0
     model, train_count = semantic_loop(dataloader_train, epoch, train_count=train_count, training=True)
-
+training_log.close()
 writer.close()

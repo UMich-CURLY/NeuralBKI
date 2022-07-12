@@ -40,7 +40,7 @@ class Rellis3dDataset(Dataset):
     """
     def __init__(self,
         grid_params,
-        directory,
+        directory="/frog-drive/jingyuso/dataset/kitti",
         device='cuda',
         num_frames=20,
         remap=True,
