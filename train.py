@@ -24,42 +24,29 @@ from Data.Rellis3D import Rellis3dDataset
 MODEL_NAME = "ConvBKI_PerClass"
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-if device == "cuda":
-  start = torch.cuda.Event(enable_timing=True)
-  end = torch.cuda.Event(enable_timing=True)
-else:
-  start = None
-  end = None
 print("device is ", device)
-
-# import rospy
-# from visualization_msgs.msg import *
-# rospy.init_node('talker',disable_signals=True)
-# map_pub = rospy.Publisher('SemMap', MarkerArray, queue_size=10)
-# pred_pub = rospy.Publisher('SemPredMap', MarkerArray, queue_size=10)
 
 model_params_file = os.path.join(os.getcwd(), "Config", MODEL_NAME + ".yaml")
 with open(model_params_file, "r") as stream:
     try:
         model_params = yaml.safe_load(stream)
         dataset = model_params["dataset"]
+        SAVE_NAME = model_params["save_dir"]
     except yaml.YAMLError as exc:
         print(exc)
 
 # CONSTANTS
 SEED = model_params["seed"]
 NUM_FRAMES = model_params["num_frames"]
-MODEL_RUN_DIR = os.path.join("Models", "Runs", MODEL_NAME + "_" + dataset)
+MODEL_RUN_DIR = os.path.join("Models", "Runs", SAVE_NAME)
 NUM_WORKERS = model_params["num_workers"]
 FLOAT_TYPE = torch.float32
 LABEL_TYPE = torch.uint8
 
 if not os.path.exists(MODEL_RUN_DIR):
     os.makedirs(MODEL_RUN_DIR)
-TRIAL_NUM = str(len(os.listdir(MODEL_RUN_DIR)))
 
-# Model Parameters
+# Data Parameters
 data_params_file = os.path.join(os.getcwd(), "Config", dataset + ".yaml")
 with open(data_params_file, "r") as stream:
     try:
@@ -93,18 +80,21 @@ if dataset == "rellis":
     train_ds = Rellis3dDataset(model_params["train"]["grid_params"], directory=TRAIN_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=False)
     dataloader_train = DataLoader(train_ds, batch_size=B, shuffle=True, collate_fn=train_ds.collate_fn, num_workers=NUM_WORKERS)
 
-    val_ds  = Rellis3dDataset(model_params["train"]["grid_params"], directory=TRAIN_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=False, model_setting="val")
+    val_ds = Rellis3dDataset(model_params["train"]["grid_params"], directory=TRAIN_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=False, data_split="val")
     dataloader_val = DataLoader(val_ds, batch_size=B, shuffle=True, collate_fn=val_ds.collate_fn, num_workers=NUM_WORKERS)
 
-trial_dir = os.path.join(MODEL_RUN_DIR, "t"+TRIAL_NUM)
-save_dir = os.path.join("Models", "Weights", MODEL_NAME + "_" + dataset, "t"+TRIAL_NUM)
+trial_dir = MODEL_RUN_DIR
+save_dir = os.path.join("Models", "Weights", SAVE_NAME)
+if os.path.exists(save_dir):
+    print("Error: path already exists")
+    exit()
 
 if not os.path.exists(trial_dir):
     os.makedirs(trial_dir)
 if not os.path.exists(save_dir):
     os.makedirs(save_dir)
 
-writer = SummaryWriter(os.path.join(MODEL_RUN_DIR, "t"+TRIAL_NUM))
+writer = SummaryWriter(MODEL_RUN_DIR)
 
 # Optimizer setup
 setup_seed(SEED)
@@ -183,9 +173,9 @@ def semantic_loop(dataloader, epoch, train_count=None, training=False):
 
         # Record
         if training:
-            writer.add_scalar(MODEL_NAME + '/Loss/Train', loss.item(), train_count)
-            writer.add_scalar(MODEL_NAME + '/Accuracy/Train', accuracy, train_count)
-            writer.add_scalar(MODEL_NAME + '/mIoU/Train', np.mean(inter / union), train_count)
+            writer.add_scalar(SAVE_NAME + '/Loss/Train', loss.item(), train_count)
+            writer.add_scalar(SAVE_NAME + '/Accuracy/Train', accuracy, train_count)
+            writer.add_scalar(SAVE_NAME + '/mIoU/Train', np.mean(inter / union), train_count)
 
             train_count += len(points)
 
@@ -199,14 +189,22 @@ def semantic_loop(dataloader, epoch, train_count=None, training=False):
         all_unions = all_unions[all_unions > 0]
         print(f'Epoch Num: {epoch} ------ average val accuracy: {num_correct/num_total}')
         print(f'Epoch Num: {epoch} ------ val miou: {np.mean(all_intersections / all_unions)}')
-        writer.add_scalar(MODEL_NAME + '/Accuracy/Val', num_correct/num_total, epoch)
-        writer.add_scalar(MODEL_NAME + '/mIoU/Val', np.mean(all_intersections / all_unions), epoch)
+        writer.add_scalar(SAVE_NAME + '/Accuracy/Val', num_correct/num_total, epoch)
+        writer.add_scalar(SAVE_NAME + '/mIoU/Val', np.mean(all_intersections / all_unions), epoch)
 
     return model, train_count
 
 
+def save_filter(model, save_path):
+    filters = model.get_filters()
+    torch.save(filters, save_path)
+
+
 for epoch in range(EPOCH_NUM):
-    # Start with validation
+    # Save filters before any training
+    save_filter(model, os.path.join("Models", "Weights", SAVE_NAME, "filters" + str(epoch) + ".pt"))
+
+    # Validation
     model.eval()
     with torch.no_grad():
         semantic_loop(dataloader_val, epoch, training=False)

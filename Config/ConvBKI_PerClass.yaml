@@ -1,4 +1,7 @@
 dataset: "rellis"
+save_dir: "ConvBKI_PerClass_Rellis"
+load_epoch: 0
+map_method: "local"
 
 train:
   B: 8
@@ -11,7 +14,12 @@ train:
     grid_size: [256.0, 256.0, 16.0]
     min_bound: [-12.800000191469727, -12.800000191469727, -1.0]
     max_bound: [12.800000191469727, 12.800000191469727, 0.6]
-filter_size: 15
+test:
+  grid_params:
+    grid_size: [512.0, 512.0, 32.0]
+    min_bound: [-25.6, -25.6, -2.0]
+    max_bound: [25.6, 25.6, 1.2]
+filter_size: 7
 kernel: "sparse"
 ell: 0.3
 seed: 42
