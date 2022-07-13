@@ -118,13 +118,13 @@ class ConvBKI(torch.nn.Module):
         return torch.hstack( (clipped_inds, valid_labels) )
 
     def get_filters(self):
-        filters = torch.zeros([self.num_classes, self.num_classes, self.filter_size, self.filter_size, self.filter_size],
+        filters = torch.zeros([self.num_classes, 1, self.filter_size, self.filter_size, self.filter_size],
                               device=self.device, dtype=self.dtype)
         for temp_class in range(self.num_classes):
             if self.per_class:
-                filters[temp_class, temp_class, :, :, :] = self.calculate_kernel(self.kernel_dists, i=temp_class)
+                filters[temp_class, 0, :, :, :] = self.calculate_kernel(self.kernel_dists, i=temp_class)
             else:
-                filters[temp_class, temp_class, :, :, :] = self.calculate_kernel(self.kernel_dists)
+                filters[temp_class, 0, :, :, :] = self.calculate_kernel(self.kernel_dists)
         return filters
 
     def forward(self, current_map, point_cloud):
@@ -151,7 +151,7 @@ class ConvBKI(torch.nn.Module):
         # 2: Apply BKI filters
         filters = self.get_filters()
         update = torch.unsqueeze(update.permute(3, 0, 1, 2), 0)
-        update = F.conv3d(update, filters, padding="same")
+        update = F.conv3d(update, filters, padding="same", groups=self.num_classes)
         new_update = torch.squeeze(update).permute(1, 2, 3, 0)
 
         return current_map + new_update

@@ -1,7 +1,7 @@
 dataset: "rellis"
 save_dir: "ConvBKI_PerClass_Rellis"
 load_epoch: 0
-map_method: "local"
+map_method: "global"
 
 train:
   B: 8
