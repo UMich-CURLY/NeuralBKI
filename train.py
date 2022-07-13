@@ -217,8 +217,7 @@ def semantic_loop(dataloader, epoch, train_count=None, training=False):
     if training:
         my_lr_scheduler.step()
         print("Epoch ", epoch, " out of ", EPOCH_NUM, " complete.")
-        training_log.write("Epoch ", epoch, " out of ", EPOCH_NUM, " complete.")
-        training_log.write("\n")
+        training_log.write(f'Epoch {epoch} out of {EPOCH_NUM}, complete \n')
         training_log.flush()
 
 
