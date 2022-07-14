@@ -67,14 +67,14 @@ with open(data_params_file, "r") as stream:
         data_params = yaml.safe_load(stream)
         NUM_CLASSES = data_params["num_classes"]
         print("Num classes: ", NUM_CLASSES)
-        if dataset == "semantic_kitti": # kitti has remap so we hard code the frequencies
-            class_frequencies = np.array([0, 1.57835390e+07, 1.25136000e+05, 1.18809000e+05,
-                                6.46799000e+05, 8.21951000e+05, 2.62978000e+05, 2.83696000e+05,
-                                2.04750000e+05, 6.16887030e+07, 4.50296100e+06, 4.48836500e+07,
-                                2.26992300e+06, 5.68402180e+07, 1.57196520e+07, 1.58442623e+08,
-                                2.06162300e+06, 3.69705220e+07, 1.15198800e+06, 3.34146000e+05], dtype=np.long)
-        else:
-            class_frequencies = np.asarray([data_params["class_counts"][i] for i in range(NUM_CLASSES)]) #TODO: kitti is slightly different here
+        # if dataset == "semantic_kitti": # kitti has remap so we hard code the frequencies
+        #     class_frequencies = np.array([0, 1.57835390e+07, 1.25136000e+05, 1.18809000e+05,
+        #                         6.46799000e+05, 8.21951000e+05, 2.62978000e+05, 2.83696000e+05,
+        #                         2.04750000e+05, 6.16887030e+07, 4.50296100e+06, 4.48836500e+07,
+        #                         2.26992300e+06, 5.68402180e+07, 1.57196520e+07, 1.58442623e+08,
+        #                         2.06162300e+06, 3.69705220e+07, 1.15198800e+06, 3.34146000e+05], dtype=np.long)
+        # else:
+        class_frequencies = np.asarray([data_params["class_counts"][i] for i in range(NUM_CLASSES)], dtype=np.compat.long)
         TRAIN_DIR = data_params["data_dir"]
     except yaml.YAMLError as exc:
         print(exc)
