@@ -2,7 +2,7 @@ dataset: "rellis"
 save_dir: "ConvBKI_PerClass_Rellis"
 load_epoch: 0
 map_method: "global"
-
+visualize: True
 train:
   B: 8
   num_epochs: 5

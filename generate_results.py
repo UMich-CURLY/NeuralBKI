@@ -24,6 +24,7 @@ from Models.model_utils import *
 from Models.ConvBKI import *
 from Data.Rellis3D import Rellis3dDataset
 from Models.mapping_utils import *
+import rospy
 
 MODEL_NAME = "ConvBKI_PerClass"
 
@@ -39,6 +40,15 @@ with open(model_params_file, "r") as stream:
     except yaml.YAMLError as exc:
         print(exc)
 
+# Rellis Parameters
+Rellis_params_file = os.path.join(os.getcwd(), "Config", "rellis.yaml")
+with open(Rellis_params_file, "r") as stream:
+    try:
+        rellis_params = yaml.safe_load(stream)
+        colors = rellis_params["colors"]
+    except yaml.YAMLError as exc:
+        print(exc)
+
 # CONSTANTS
 SEED = model_params["seed"]
 NUM_FRAMES = model_params["num_frames"]
@@ -49,6 +59,8 @@ LABEL_TYPE = torch.uint8
 MAP_METHOD = model_params["map_method"]
 LOAD_EPOCH = model_params["load_epoch"]
 LOAD_DIR = model_params["save_dir"]
+VISUALIZE = model_params["visualize"]
+print("mapping:", MAP_METHOD)
 
 # Data Parameters
 data_params_file = os.path.join(os.getcwd(), "Config", dataset + ".yaml")
@@ -91,11 +103,14 @@ elif MAP_METHOD == "global":
 # Iteratively loop through each scan
 current_scene = None
 current_frame_id = None
+
+if VISUALIZE == True:
+    rospy.init_node('talker', anonymous=True) 
+
 for idx in range(len(test_ds)):
     with torch.no_grad():
         # Load data
         pose, points, pred_labels, gt_labels, scene_id, frame_id = test_ds.get_test_item(idx)
-
         # Reset if new subsequence
         if scene_id != current_scene or (frame_id - 1) != current_frame_id:
             map_object.reset_grid()
@@ -109,3 +124,14 @@ for idx in range(len(test_ds)):
 
         current_scene = scene_id
         current_frame_id = frame_id
+
+        # global map [centoids(3), semantics(15)]
+        # Run for visualizations
+        if VISUALIZE == True:
+
+            try:
+                publish_voxels(map_object, grid_params['min_bound'], grid_params['max_bound'], grid_params['grid_size'], colors, MAP_METHOD)
+                print("frame:", idx, "global map:", map_object.global_map.shape)
+            except rospy.ROSInterruptException:      
+                pass 
+            
