@@ -1,4 +1,5 @@
-dataset: "rellis"
+# dataset: "rellis"
+dataset: "semantic_kitti"
 
 train:
   B: 8
