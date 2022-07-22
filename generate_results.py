@@ -23,6 +23,7 @@ from Data.utils import *
 from Models.model_utils import *
 from Models.ConvBKI import *
 from Data.Rellis3D import Rellis3dDataset
+from Data.SemanticKitti import KittiDataset
 from Models.mapping_utils import *
 import rospy
 
@@ -41,11 +42,20 @@ with open(model_params_file, "r") as stream:
         print(exc)
 
 # Rellis Parameters
-Rellis_params_file = os.path.join(os.getcwd(), "Config", "rellis.yaml")
+# Rellis_params_file = os.path.join(os.getcwd(), "Config", "rellis.yaml")
+# with open(Rellis_params_file, "r") as stream:
+#     try:
+#         rellis_params = yaml.safe_load(stream)
+#         colors = rellis_params["colors"]
+#     except yaml.YAMLError as exc:
+#         print(exc)
+
+# skitti Parameters
+Rellis_params_file = os.path.join(os.getcwd(), "Config", "semantic_kitti.yaml")
 with open(Rellis_params_file, "r") as stream:
     try:
         rellis_params = yaml.safe_load(stream)
-        colors = rellis_params["colors"]
+        colors = rellis_params["color_map"]
     except yaml.YAMLError as exc:
         print(exc)
 
@@ -62,6 +72,13 @@ LOAD_DIR = model_params["save_dir"]
 VISUALIZE = model_params["visualize"]
 print("mapping:", MAP_METHOD)
 
+# color 
+colors_temp = np.zeros((len(colors), 3))
+for i in range(len(colors)):
+    colors_temp[i,:] = colors[i]
+colors = colors_temp.astype("int")  
+colors = colors / 255.0
+
 # Data Parameters
 data_params_file = os.path.join(os.getcwd(), "Config", dataset + ".yaml")
 with open(data_params_file, "r") as stream:
@@ -75,6 +92,9 @@ with open(data_params_file, "r") as stream:
 # Load data set
 if dataset == "rellis":
     test_ds = Rellis3dDataset(model_params["test"]["grid_params"], directory=DATA_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=False, data_split="test")
+    dataloader_test = DataLoader(test_ds, batch_size=1, shuffle=False, collate_fn=test_ds.collate_fn, num_workers=NUM_WORKERS)
+elif dataset == "semantic_kitti":
+    test_ds = KittiDataset(model_params["test"]["grid_params"], directory=DATA_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=False, split="train")
     dataloader_test = DataLoader(test_ds, batch_size=1, shuffle=False, collate_fn=test_ds.collate_fn, num_workers=NUM_WORKERS)
 
 # Create map object
@@ -99,23 +119,47 @@ elif MAP_METHOD == "global":
         num_classes=NUM_CLASSES, # Classes
         device=device # Device
     )
-
+elif MAP_METHOD == "local2":
+    map_object = LocalMap2(
+        torch.tensor([int(p) for p in grid_params['grid_size']], dtype=torch.long).to(device),  # Grid size
+        torch.tensor(grid_params['min_bound']).to(device),  # Lower bound
+        torch.tensor(grid_params['max_bound']).to(device),  # Upper bound
+        torch.load(os.path.join("Models", "Weights", LOAD_DIR, "filters" + str(LOAD_EPOCH) + ".pt")), # Filters
+        model_params["filter_size"], # Filter size
+        num_classes=NUM_CLASSES, # Classes
+        device=device # Device
+    )
+elif MAP_METHOD == "global2":
+    map_object = GlobalMap2(
+        torch.tensor([int(p) for p in grid_params['grid_size']], dtype=torch.long).to(device),  # Grid size
+        torch.tensor(grid_params['min_bound']).to(device),  # Lower bound
+        torch.tensor(grid_params['max_bound']).to(device),  # Upper bound
+        torch.load(os.path.join("Models", "Weights", LOAD_DIR, "filters" + str(LOAD_EPOCH) + ".pt")), # Filters
+        model_params["filter_size"], # Filter size
+        num_classes=NUM_CLASSES, # Classes
+        device=device # Device
+    )
 # Iteratively loop through each scan
 current_scene = None
 current_frame_id = None
-
+print("Visualize:", VISUALIZE)
 if VISUALIZE == True:
     rospy.init_node('talker', anonymous=True) 
+    map_pub = rospy.Publisher('SemMap_global', MarkerArray, queue_size=10)
+    next_map = MarkerArray()
 
 for idx in range(len(test_ds)):
     with torch.no_grad():
         # Load data
-        pose, points, pred_labels, gt_labels, scene_id, frame_id = test_ds.get_test_item(idx)
+        pose, prior_pose, Tr, points, pred_labels, gt_labels, scene_id, frame_id = test_ds.get_test_item(idx)
         # Reset if new subsequence
-        if scene_id != current_scene or (frame_id - 1) != current_frame_id:
-            map_object.reset_grid()
+        # if scene_id != current_scene or (frame_id - 1) != current_frame_id:
+        #     map_object.reset_grid()
         # Update pose if not
-        map_object.propagate(pose)
+        # if MAP_METHOD == "global":
+        #     map_object.propagate(pose)
+        # else:
+        map_object.propagate(pose, prior_pose, Tr)
 
         # Add points to map
         labeled_pc = np.hstack((points, pred_labels))
@@ -125,13 +169,13 @@ for idx in range(len(test_ds)):
         current_scene = scene_id
         current_frame_id = frame_id
 
-        # global map [centoids(3), semantics(15)]
-        # Run for visualizations
-        if VISUALIZE == True:
 
+        print("frame:", idx, "global map:", map_object.global_map.shape)
+
+        if VISUALIZE == True:
             try:
-                publish_voxels(map_object, grid_params['min_bound'], grid_params['max_bound'], grid_params['grid_size'], colors, MAP_METHOD)
-                print("frame:", idx, "global map:", map_object.global_map.shape)
+                map = publish_voxels(map_object, grid_params['min_bound'], grid_params['max_bound'], grid_params['grid_size'], colors, next_map, MAP_METHOD)
+                map_pub.publish(map)
             except rospy.ROSInterruptException:      
                 pass 
             

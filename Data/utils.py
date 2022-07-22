@@ -22,16 +22,10 @@ def points_to_voxels_torch(voxel_grid, points, min_bound, grid_dims, voxel_sizes
     voxel_grid = voxel_grid[voxels[:, 0], voxels[:, 1], voxels[:, 2]]
     return voxel_grid
 
-def publish_voxels(map_object, min_dim, max_dim, grid_dims, colors, map_method="local"):
-    
-    colors_temp = np.zeros((len(colors), 3))
-    for i in range(len(colors)):
-        colors_temp[i,:] = colors[i]
-    colors = colors_temp.astype("int")  
-    
+def publish_voxels(map_object, min_dim, max_dim, grid_dims, colors, next_map, map_method="local"):
+    next_map.markers.clear()
+
     if map_method == "global":
-        map_pub = rospy.Publisher('SemMap_global', MarkerArray, queue_size=10)
-        next_map = MarkerArray()
         marker = Marker()
         marker.id = 0
         marker.ns = "Global_Semantic_Map"
@@ -39,7 +33,7 @@ def publish_voxels(map_object, min_dim, max_dim, grid_dims, colors, map_method="
         marker.type = marker.CUBE_LIST
         marker.action = marker.ADD
         marker.lifetime.secs = 0
-
+        marker.header.stamp = rospy.Time.now()
 
         marker.pose.orientation.x = 0.0
         marker.pose.orientation.y = 0.0
@@ -71,7 +65,137 @@ def publish_voxels(map_object, min_dim, max_dim, grid_dims, colors, map_method="
         
         next_map.markers.append(marker)
 
-        map_pub.publish(next_map)
+    if map_method == "local":
+        marker = Marker()
+        marker.id = 0
+        marker.ns = "Global_Semantic_Map"
+        marker.header.frame_id = "map" # change this to match model + scene name LMSC_000001
+        marker.type = marker.CUBE_LIST
+        marker.action = marker.ADD
+        marker.lifetime.secs = 0
+        marker.header.stamp = rospy.Time.now()
+
+        marker.pose.orientation.x = 0.0
+        marker.pose.orientation.y = 0.0
+        marker.pose.orientation.z = 0.0
+        marker.pose.orientation.w = 1
+
+        marker.scale.x = (max_dim[0] - min_dim[0]) / grid_dims[0]
+        marker.scale.y = (max_dim[1] - min_dim[1]) / grid_dims[1]
+        marker.scale.z = (max_dim[2] - min_dim[2]) / grid_dims[2]
+        
+        semantic_labels = map_object.global_map[:,3:]
+
+        semantic_labels = np.argmax(semantic_labels / np.sum(semantic_labels, axis=-1, keepdims=True), axis=-1)
+        semantic_labels = semantic_labels.reshape(-1, 1)
+
+        centroids = map_object.global_map[:,:3]
+        for i in range(semantic_labels.shape[0]):
+            pred = semantic_labels[i]
+            point = Point32()
+            color = ColorRGBA()
+            point.x = centroids[i, 0]
+            point.y = centroids[i, 1]
+            point.z = centroids[i, 2]
+            color.r, color.g, color.b = colors[pred].squeeze()
+
+            color.a = 1.0
+            marker.points.append(point)
+            marker.colors.append(color)
+        
+        next_map.markers.append(marker)
+
+    if map_method == "local2":
+        map_pub = rospy.Publisher('SemMap_global', MarkerArray, queue_size=10)
+        next_map = MarkerArray()
+        marker = Marker()
+        marker.id = 0
+        marker.ns = "Global_Semantic_Map"
+        marker.header.frame_id = "map" # change this to match model + scene name LMSC_000001
+        marker.type = marker.CUBE_LIST
+        marker.action = marker.ADD
+        marker.lifetime.secs = 0
+        marker.header.stamp = rospy.Time.now()
+
+        marker.pose.orientation.x = 0.0
+        marker.pose.orientation.y = 0.0
+        marker.pose.orientation.z = 0.0
+        marker.pose.orientation.w = 1
+
+        marker.scale.x = (max_dim[0] - min_dim[0]) / grid_dims[0]
+        marker.scale.y = (max_dim[1] - min_dim[1]) / grid_dims[1]
+        marker.scale.z = (max_dim[2] - min_dim[2]) / grid_dims[2]
+        
+        semantic_labels = map_object.global_map[:,3:]
+
+        semantic_labels = np.argmax(semantic_labels / np.sum(semantic_labels, axis=-1, keepdims=True), axis=-1)
+        semantic_labels = semantic_labels.reshape(-1)
+        
+        mask = semantic_labels != 0
+        semantic_labels = semantic_labels[mask]
+        centroids = map_object.global_map[:,:3]
+        centroids = centroids[mask]
+        for i in range(semantic_labels.shape[0]):
+            pred = semantic_labels[i]
+            point = Point32()
+            color = ColorRGBA()
+            point.x = centroids[i, 0]
+            point.y = centroids[i, 1]
+            point.z = centroids[i, 2]
+            color.r, color.g, color.b = colors[pred].squeeze()
+
+            color.a = 1.0
+            marker.points.append(point)
+            marker.colors.append(color)
+        
+        next_map.markers.append(marker)
+
+        #map_pub.publish(next_map)
+
+    if map_method == "global2":
+        marker = Marker()
+        marker.id = 0
+        marker.ns = "Global_Semantic_Map"
+        marker.header.frame_id = "map" # change this to match model + scene name LMSC_000001
+        marker.type = marker.CUBE_LIST
+        marker.action = marker.ADD
+        marker.lifetime.secs = 0
+        marker.header.stamp = rospy.Time.now()
+
+        marker.pose.orientation.x = 0.0
+        marker.pose.orientation.y = 0.0
+        marker.pose.orientation.z = 0.0
+        marker.pose.orientation.w = 1
+
+        marker.scale.x = (max_dim[0] - min_dim[0]) / grid_dims[0]
+        marker.scale.y = (max_dim[1] - min_dim[1]) / grid_dims[1]
+        marker.scale.z = (max_dim[2] - min_dim[2]) / grid_dims[2]
+        
+        semantic_labels = map_object.global_map[:,3:]
+
+        semantic_labels = np.argmax(semantic_labels / np.sum(semantic_labels, axis=-1, keepdims=True), axis=-1)
+        semantic_labels = semantic_labels.reshape(-1)
+        
+        mask = semantic_labels != 0
+        semantic_labels = semantic_labels[mask]
+        centroids = map_object.global_map[:,:3]
+        centroids = centroids[mask]
+        for i in range(semantic_labels.shape[0]):
+            pred = semantic_labels[i]
+            point = Point32()
+            color = ColorRGBA()
+            point.x = centroids[i, 0]
+            point.y = centroids[i, 1]
+            point.z = centroids[i, 2]
+            color.r, color.g, color.b = colors[pred].squeeze()
+
+            color.a = 1.0
+            marker.points.append(point)
+            marker.colors.append(color)
+        
+        next_map.markers.append(marker)
+    return next_map
+        #map_pub.publish(next_map)
 
 # def publish_voxels(map, pub, centroids, min_dim,
 #     max_dim, grid_dims, model="DiscreteBKI", pub_dynamic=False,
