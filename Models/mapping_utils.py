@@ -236,7 +236,7 @@ class GlobalMap2(ConvBKI):
 
         # Apply BKI filters
         update = torch.unsqueeze(update.permute(3, 0, 1, 2), 0)
-        update = self.ConvLayer(update)
+        # update = self.ConvLayer(update)
         new_update = torch.squeeze(update).permute(1, 2, 3, 0)
         # Find updated cells
         local_map = local_map + new_update
