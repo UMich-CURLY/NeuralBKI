@@ -96,26 +96,40 @@ class ConvBKI(torch.nn.Module):
                            self.num_classes, device=self.device, requires_grad=True,
                            dtype=self.dtype) + self.prior
     
-    def grid_ind(self, input_pc):
+    def grid_ind(self, input_pc, min_bound=None, max_bound=None):
         '''
         Input:
             input_xyz: N * (x, y, z, c) float32 array, point cloud
         Output:
             grid_inds: N' * (x, y, z, c) int32 array, point cloud mapped to voxels
         '''
+        if min_bound is None:
+            min_bound = self.min_bound
+        if max_bound is None:
+            max_bound = self.max_bound
         input_xyz   = input_pc[:, :3]
         labels      = input_pc[:, 3].view(-1, 1)
         
-        valid_input_mask = torch.all((input_xyz < self.max_bound) & (input_xyz >= self.min_bound), axis=1)
+        valid_input_mask = torch.all((input_xyz < max_bound) & (input_xyz >= min_bound), axis=1)
         
         valid_xyz = input_xyz[valid_input_mask]
         valid_labels = labels[valid_input_mask]
         
-        grid_inds = torch.floor((valid_xyz - self.min_bound) / self.voxel_sizes)
+        grid_inds = torch.floor((valid_xyz - min_bound) / self.voxel_sizes)
         maxes = (self.grid_size - 1).view(1, 3)
         clipped_inds = torch.clamp(grid_inds, torch.zeros_like(maxes), maxes)
         
         return torch.hstack( (clipped_inds, valid_labels) )
+
+    def get_filters(self):
+        filters = torch.zeros([self.num_classes, 1, self.filter_size, self.filter_size, self.filter_size],
+                              device=self.device, dtype=self.dtype)
+        for temp_class in range(self.num_classes):
+            if self.per_class:
+                filters[temp_class, 0, :, :, :] = self.calculate_kernel(self.kernel_dists, i=temp_class)
+            else:
+                filters[temp_class, 0, :, :, :] = self.calculate_kernel(self.kernel_dists)
+        return filters
 
     def forward(self, current_map, point_cloud):
         '''
@@ -139,14 +153,9 @@ class ConvBKI(torch.nn.Module):
         update[grid_indices] = update[grid_indices] + counts
         
         # 2: Apply BKI filters
-        filters = torch.zeros([C, C, self.filter_size, self.filter_size, self.filter_size], device=self.device, dtype=self.dtype)
-        for temp_class in range(C):
-            if self.per_class:
-                filters[temp_class, temp_class, :, :, :] = self.calculate_kernel(self.kernel_dists, i=temp_class)
-            else:
-                filters[temp_class, temp_class, :, :, :] = self.calculate_kernel(self.kernel_dists)
+        filters = self.get_filters()
         update = torch.unsqueeze(update.permute(3, 0, 1, 2), 0)
-        update = F.conv3d(update, filters, padding="same")
+        update = F.conv3d(update, filters, padding="same", groups=self.num_classes)
         new_update = torch.squeeze(update).permute(1, 2, 3, 0)
 
         return current_map + new_update
