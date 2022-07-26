@@ -131,6 +131,7 @@ class KittiDataset(Dataset):
         for seq in self._seqs:
             velodyne_dir = os.path.join(self._directory, seq, 'velodyne')
             label_dir = os.path.join(self._directory, seq, 'labels')
+            # preds_dir = os.path.join(self._directory, seq, 'predictions_darknet') # jingyu add preds
             preds_dir = os.path.join(self._directory, seq, 'predictions') # jingyu add preds
             # eval_dir = os.path.join(self._directory, seq, 'voxels')
             self._num_frames_scene.append(len(os.listdir(velodyne_dir)))
@@ -229,8 +230,8 @@ class KittiDataset(Dataset):
 
         # in completion we have to distinguish empty and invalid voxels.
         # Important: For voxels 0 corresponds to "empty" and not "unlabeled".
-        remap_lut[remap_lut == 0] = 255  # map 0 to 'invalid'
-        remap_lut[0] = 0  # only 'empty' stays 'empty'.
+        #remap_lut[remap_lut == 0] = 255  # map 0 to 'invalid'
+        #remap_lut[0] = 0  # only 'empty' stays 'empty'.
 
         return remap_lut
 
@@ -242,7 +243,8 @@ class KittiDataset(Dataset):
         current_points = []
         current_labels = []
 
-        ego_pose = self.get_pose(idx_range[-1])
+        ego_pose, Tr = self.get_pose(idx_range[-1])
+        ego_pose = np.matmul(np.linalg.inv(Tr), np.matmul(ego_pose, Tr))
         to_ego   = np.linalg.inv(ego_pose)
 
         aug_index = np.random.randint(0,3) # Set end idx to 6 to do rotations
@@ -264,15 +266,15 @@ class KittiDataset(Dataset):
             else:
                 points = np.fromfile(self._velodyne_list[i],dtype=np.float32).reshape(-1,4)[:, :3]
                 if self.apply_transform:
-                    to_world   = self.get_pose(i)
-                    to_world = to_world
+                    to_world, Tr  = self.get_pose(i)
+                    to_world = np.matmul(np.linalg.inv(Tr), np.matmul(to_world, Tr))
                     relative_pose = np.matmul(to_ego, to_world)
 
                     points = np.dot(relative_pose[:3, :3], points.T).T + relative_pose[:3, 3]
                 # temp_gt_labels = np.fromfile(self._label_list[i], dtype=np.uint32).reshape((-1)).astype(np.uint8)
                 temp_gt_labels = np.fromfile(self._label_list[i], dtype=np.uint32) & 0xFFFF 
                 temp_gt_labels = temp_gt_labels.reshape((-1)).astype(np.uint8)                
-                labels = np.fromfile(self._pred_list[i], dtype=np.uint32).reshape((-1)).astype(np.uint8)
+                labels = np.fromfile(self._pred_list[i], dtype=np.uint32).reshape((-1)).astype(np.uint8)                
                 # preds = np.fromfile(self._pred_list[i], dtype=np.uint16).reshape((256,256,-1)).astype(np.uint8)
 
                 # process them from motionsc
@@ -311,7 +313,7 @@ class KittiDataset(Dataset):
             
             current_points.append(points)
             current_labels.append(labels)
-
+        # print(current_points, current_labels, gt_labels.astype(np.uint8).reshape(-1, 1))
         return current_points, current_labels, gt_labels.astype(np.uint8).reshape(-1, 1)
             
         #     t_i += 1

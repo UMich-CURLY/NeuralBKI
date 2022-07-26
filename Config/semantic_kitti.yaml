@@ -1,4 +1,5 @@
 num_classes: 20
+# data_dir: "/home/jason/Data/kitti"
 data_dir: "/home/tigeriv/Data/KITTI/dataset"
 ignore_labels: = [0]
 

@@ -69,7 +69,7 @@ with open(data_params_file, "r") as stream:
 if dataset == "rellis":
     test_ds = Rellis3dDataset(model_params["test"]["grid_params"], directory=DATA_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=False, data_split="test")
 elif dataset == "semantic_kitti":
-    test_ds = KittiDataset(model_params["test"]["grid_params"], directory=DATA_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=False, data_split="test")
+    test_ds = KittiDataset(model_params["test"]["grid_params"], directory=DATA_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=False, data_split="train")
 dataloader_test = DataLoader(test_ds, batch_size=1, shuffle=False, collate_fn=test_ds.collate_fn, num_workers=NUM_WORKERS)
 
 
