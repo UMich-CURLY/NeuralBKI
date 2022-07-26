@@ -45,7 +45,7 @@ def grid_ind(input_pc, labels, min_bound, max_bound, grid_size, voxel_sizes):
 # TODO: Load this from YAML
 SPLIT_SEQUENCES = {
     "train": ["00"],
-    "val": ["01"],
+    "val": ["04"],
     "test": ["11"]
 }
 

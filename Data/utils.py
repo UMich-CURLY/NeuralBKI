@@ -11,6 +11,20 @@ from visualization_msgs.msg import *
 from geometry_msgs.msg import Point32
 from std_msgs.msg import ColorRGBA
 
+# Intersection, union for one frame
+def iou_one_frame(pred, target, n_classes=21):
+    pred = pred.reshape(-1)
+    target = target.reshape(-1)
+    intersection = np.zeros(n_classes)
+    union = np.zeros(n_classes)
+
+    for cls in range(n_classes):
+        pred_inds = pred == cls
+        target_inds = target == cls
+        
+        intersection[cls] = (pred_inds[target_inds]).long().sum().item()  # Cast to long to prevent overflows
+        union[cls] = pred_inds.long().sum().item() + target_inds.long().sum().item() - intersection[cls]
+    return intersection, union
 
 def points_to_voxels_torch(voxel_grid, points, min_bound, grid_dims, voxel_sizes):
     voxels = torch.floor((points - min_bound) / voxel_sizes).to(dtype=torch.int)
