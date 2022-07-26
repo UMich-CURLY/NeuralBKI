@@ -22,12 +22,31 @@ LABEL_INV_REMAP = kitti_config["learning_map_inv"]
 # LABELS_REMAP = np.array(LABE)
 # print(type(LABELS_REMAP))
 
+def grid_ind(input_pc, labels, min_bound, max_bound, grid_size, voxel_sizes):
+    '''
+    Input:
+        input_xyz: N * (x, y, z, c) float32 array, point cloud
+    Output:
+        grid_inds: N' * (x, y, z, c) int32 array, point cloud mapped to voxels
+    '''
+    input_xyz   = input_pc[:, :3]
+    
+    valid_input_mask = np.all((input_xyz < max_bound) & (input_xyz >= min_bound), axis=1)
+    
+    valid_xyz = input_xyz[valid_input_mask]
+    labels = labels[valid_input_mask]
 
+    grid_inds = np.floor((valid_xyz - min_bound) / voxel_sizes)
+    maxes = (grid_size - 1).reshape(1, 3)
+    clipped_inds = np.clip(grid_inds, np.zeros_like(maxes), maxes)
 
+    return clipped_inds, labels, valid_xyz
+
+# TODO: Load this from YAML
 SPLIT_SEQUENCES = {
-    "train": ["00", "01", "02", "03", "04", "05", "06", "07", "09", "10"],
-    "valid": ["08"],
-    "test": ["11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21"]
+    "train": ["00"],
+    "val": ["01"],
+    "test": ["11"]
 }
 
 
@@ -46,7 +65,6 @@ def unpack(compressed):
     return uncompressed
 
 
-
 class KittiDataset(Dataset):
     """Kitti Dataset for Neural BKI project
     
@@ -55,7 +73,7 @@ class KittiDataset(Dataset):
 
     def __init__(self, 
             grid_params,
-            directory="/frog-drive/jingyuso/dataset/kitti",
+            directory="/home/jason/Data/kitti",
             device='cuda',
             num_frames=4,
             voxelize_input=True,
@@ -64,7 +82,7 @@ class KittiDataset(Dataset):
             use_aug=True,
             apply_transform=True,
             remap=True,
-            split='train'
+            data_split='train'
             ):
         
 
@@ -91,7 +109,7 @@ class KittiDataset(Dataset):
         self.device = device
         self.random_flips = random_flips
         self.remap = remap
-        self.split = split
+        self.split = data_split
 
         self._remap_lut = self.get_remap_lut()
 
@@ -103,6 +121,7 @@ class KittiDataset(Dataset):
         self._frames_list = []
         self._timestamps = []
         self._poses = np.empty((0,12))
+        self._Tr = np.empty((0,12))
 
         self._num_frames_scene = []
 
@@ -111,12 +130,15 @@ class KittiDataset(Dataset):
         for seq in self._seqs:
             velodyne_dir = os.path.join(self._directory, seq, 'velodyne')
             label_dir = os.path.join(self._directory, seq, 'labels')
-            preds_dir = os.path.join(self._directory, seq, 'preds') # jingyu add preds
+            preds_dir = os.path.join(self._directory, seq, 'predictions') # jingyu add preds
             # eval_dir = os.path.join(self._directory, seq, 'voxels')
             self._num_frames_scene.append(len(os.listdir(velodyne_dir)))
             frames_list = [os.path.splitext(filename)[0] for filename in sorted(os.listdir(velodyne_dir))]
             
             pose = np.loadtxt(os.path.join(self._directory, seq, 'poses.txt'))
+            Tr = np.genfromtxt(os.path.join(self._directory, seq, 'calib.txt'))[-1,1:]
+            Tr = np.repeat(np.expand_dims(Tr, axis=1).T,pose.shape[0],axis=0)
+            self._Tr = np.vstack((self._Tr, Tr))
             self._poses = np.vstack((self._poses, pose))
 
             self._frames_list.extend(frames_list)
@@ -130,8 +152,7 @@ class KittiDataset(Dataset):
         # self._poses = np.concatenate(self._poses)
         
         self._poses = self._poses.reshape(sum(self._num_frames_scene), 12)
-        
-
+        self._Tr = self._Tr.reshape(sum(self._num_frames_scene), 12)
 
     def collate_fn(self, data):
         points_batch = [bi[0] for bi in data]
@@ -164,12 +185,20 @@ class KittiDataset(Dataset):
         pose = np.zeros((4, 4))
         pose[3, 3] = 1
         pose[:3, :4] = self._poses[frame_id,:].reshape(3, 4)
-        return pose
+
+        Tr = np.zeros((4, 4))
+        Tr[3, 3] = 1
+        Tr[:3, :4] = self._Tr[frame_id,:].reshape(3,4)
+
+        Tr = Tr.astype(np.float32)
+        pose = pose.astype(np.float32)
+        global_pose = np.matmul(np.linalg.inv(Tr), np.matmul(pose, Tr))
+
+        return global_pose
 
     # Use all frames, if there is no data then zero pad
     def __len__(self):
         return sum(self._num_frames_scene)
-    
 
     def get_inv_remap_lut(self):
         '''
@@ -201,7 +230,7 @@ class KittiDataset(Dataset):
 
         # in completion we have to distinguish empty and invalid voxels.
         # Important: For voxels 0 corresponds to "empty" and not "unlabeled".
-        remap_lut[remap_lut == 0] = 255  # map 0 to 'invalid'
+        remap_lut[remap_lut == 0] = 0  # keep 0 as ignore
         remap_lut[0] = 0  # only 'empty' stays 'empty'.
 
         return remap_lut
@@ -222,12 +251,6 @@ class KittiDataset(Dataset):
         aug_mat = self.get_aug_matrix(aug_index)
         gt_labels = None
 
-        
-        # if self.voxelize_input:
-        #     current_horizon = np.zeros((idx_range.shape[0], int(self.grid_dims[0]), int(self.grid_dims[1]), int(self.grid_dims[2])), dtype=np.float32)
-        # else:
-        #     current_horizon = []
-
         t_i = 0
         for i in idx_range:
             if i == -1: # Zero pad
@@ -236,12 +259,12 @@ class KittiDataset(Dataset):
             else:
                 points = np.fromfile(self._velodyne_list[i],dtype=np.float32).reshape(-1,4)[:, :3]
                 if self.apply_transform:
-                    to_world   = self.get_pose(i)
-                    to_world = to_world
-                    relative_pose = np.matmul(to_ego, to_world)
-
+                    global_pose   = self.get_pose(i)
+                    relative_pose = np.matmul(to_ego, global_pose)
                     points = np.dot(relative_pose[:3, :3], points.T).T + relative_pose[:3, 3]
-                temp_gt_labels = np.fromfile(self._label_list[i], dtype=np.uint32).reshape((-1)).astype(np.uint8)
+
+                temp_gt_labels = np.fromfile(self._label_list[i], dtype=np.uint32) & 0xFFFF 
+                temp_gt_labels = temp_gt_labels.reshape((-1)).astype(np.uint8)                
                 labels = np.fromfile(self._pred_list[i], dtype=np.uint32).reshape((-1)).astype(np.uint8)
 
                 # Perform data augmentation on points
@@ -251,6 +274,7 @@ class KittiDataset(Dataset):
                 # Filter points outside of voxel grid
                 grid_point_mask = np.all(
                     (points < self.max_bound) & (points >= self.min_bound), axis=1)
+
                 points = points[grid_point_mask, :]
                 temp_gt_labels = temp_gt_labels[grid_point_mask]
                 labels = labels[grid_point_mask]
@@ -276,38 +300,6 @@ class KittiDataset(Dataset):
             current_labels.append(labels)
 
         return current_points, current_labels, gt_labels.astype(np.uint8).reshape(-1, 1)
-            
-        #     t_i += 1
-        
-        # output = np.fromfile(self._eval_labels[idx_range[-1]],dtype=np.uint16).reshape(self._eval_size).astype(np.uint8)
-        # counts = unpack(np.fromfile(self._eval_valid[idx_range[-1]],dtype=np.uint8)).reshape(self._eval_size)
-        
-        # if self.voxelize_input and self.random_flips:
-        #     # X flip
-        #     rand_num = np.random.randint(3)
-        #     if rand_num == 0:
-        #         output = np.flip(output, axis=0)
-        #         counts = np.flip(counts, axis=0)
-        #         current_horizon = np.flip(current_horizon, axis=1) # Because there is a time dimension
-        #     # Y Flip
-        #     if rand_num == 1:
-        #         output = np.flip(output, axis=1)
-        #         counts = np.flip(counts, axis=1)
-        #         current_horizon = np.flip(current_horizon, axis=2) # Because there is a time dimension
-            
-        #     # add X/Y flip
-        #     if rand_num == 2:
-        #         output = np.flip(np.flip(output, axis=0), axis=1)
-        #         counts = np.flip(np.flip(counts, axis=0), axis=1)
-        #         current_horizon = np.flip(np.flip(current_horizon, axis=1), axis=2) # Because there is a time dimension
-                
-        # if self.remap:
-        #     output = self._remap_lut[output].astype(np.uint8)
-        #     # print(type(output))
-
-        # return current_horizon, output, counts
-        
-        # no enough frames
     
     def find_horizon(self, idx):
         end_idx = idx
@@ -338,15 +330,36 @@ class KittiDataset(Dataset):
             voxel_grid[t_i, unique_voxels[:, 0], unique_voxels[:, 1], unique_voxels[:, 2]] += counts
         return voxel_grid
 
+    def get_test_item(self, idx):
+            frame_id = idx # Frame ID in current scene ID
+            global_pose = self.get_pose(frame_id)
+            if frame_id > 0:
+                prior_pose = self.get_pose(frame_id - 1)
+            else: 
+                prior_pose = global_pose
+            points = np.fromfile(self._velodyne_list[frame_id], dtype=np.float32).reshape(-1, 4)[:, :3]
+            gt_labels = np.fromfile(self._label_list[frame_id], dtype=np.uint32) & 0xFFFF 
+            gt_labels = gt_labels.reshape((-1)).astype(np.uint8)
+            pred_labels = np.fromfile(self._pred_list[frame_id], dtype=np.uint32).reshape((-1)).astype(np.uint8)
 
+            # Filter points outside of voxel grid
+            grid_point_mask = np.all( (points < self.max_bound) & (points >= self.min_bound), axis=1)
+            points = points[grid_point_mask, :]
+            gt_labels = gt_labels[grid_point_mask]
+            pred_labels = pred_labels[grid_point_mask]
 
-# ds = KittiDataset('/media/sdb1/kitti/')
-# len(ds)
-# print(ds[0])
+            # Remove zero labels
+            void_mask = gt_labels != 0
+            points = points[void_mask, :]
+            gt_labels = gt_labels[void_mask]
+            pred_labels = pred_labels[void_mask]
 
+            if self.remap:
+                # gt_labels = self.LABELS_REMAP[gt_labels].astype(np.uint8)
+                # pred_labels = self.LABELS_REMAP[pred_labels].astype(np.uint8)
+                for i in range(gt_labels.shape[0]):
+                    gt_labels[i] = LABELS_REMAP[gt_labels[i]]
+                    pred_labels[i] = LABELS_REMAP[pred_labels[i]]
+            scene_id = 0
 
-
-# current_horizon, output, counts = ds[20]
-# print(np.unique(output, return_counts=True))
-
-# print(np.unique(counts, return_counts=True))
+            return global_pose, points, pred_labels.astype(np.uint8).reshape(-1, 1), gt_labels.astype(np.uint8).reshape(-1, 1), scene_id, frame_id

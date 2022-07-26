@@ -47,7 +47,7 @@ class Rellis3dDataset(Dataset):
         use_aug=True,
         apply_transform=True,
         model_name="salsa",
-        model_setting="train"
+        data_split="train"
         ):
         '''Constructor.
         Parameters:
@@ -77,7 +77,7 @@ class Rellis3dDataset(Dataset):
         self._poses = []
         self._num_frames_by_scene = []
 
-        split_dir = os.path.join(self._directory, "pt_"+model_setting+".lst")
+        split_dir = os.path.join(self._directory, "pt_"+data_split+".lst")
 
         data_params_file = os.path.join(os.getcwd(), "Config", "rellis.yaml")
         with open(data_params_file, "r") as stream:
@@ -256,3 +256,30 @@ class Rellis3dDataset(Dataset):
 
         return idx_range
 
+    def get_test_item(self, idx):
+        scene_name = self._scenes_list[idx]
+        scene_id = int(scene_name)  # Scene ID
+        frame_id = self._index_list[idx]  # Frame ID in current scene ID
+
+        pose = self.get_pose(scene_id, frame_id)
+        points = np.fromfile(self._velodyne_list[scene_id][frame_id], dtype=np.float32).reshape(-1, 4)[:, :3]
+        gt_labels = np.fromfile(self._label_list[scene_id][frame_id], dtype=np.uint32).reshape((-1)).astype(np.uint8)
+        pred_labels = np.fromfile(self._pred_list[scene_id][frame_id], dtype=np.uint32).reshape((-1)).astype(np.uint8)
+
+        # Filter points outside of voxel grid
+        grid_point_mask = np.all( (points < self.max_bound) & (points >= self.min_bound), axis=1)
+        points = points[grid_point_mask, :]
+        gt_labels = gt_labels[grid_point_mask]
+        pred_labels = pred_labels[grid_point_mask]
+
+        # Remove zero labels
+        void_mask = gt_labels != 0
+        points = points[void_mask, :]
+        gt_labels = gt_labels[void_mask]
+        pred_labels = pred_labels[void_mask]
+
+        if self.remap:
+            gt_labels = self.LABELS_REMAP[gt_labels].astype(np.uint8)
+            pred_labels = self.LABELS_REMAP[pred_labels].astype(np.uint8)
+
+        return pose.astype(np.float32), points, pred_labels.astype(np.uint8).reshape(-1, 1), gt_labels.astype(np.uint8).reshape(-1, 1), scene_id, frame_id

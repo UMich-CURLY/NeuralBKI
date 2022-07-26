@@ -1,6 +1,10 @@
-# dataset: "rellis"
+#dataset: "rellis"
 dataset: "semantic_kitti"
-
+#save_dir: "ConvBKI_PerClass_Rellis"
+save_dir: "ConvBKI_PerClass_semantic_kitti"
+load_epoch: 0
+map_method: "global"
+visualize: True
 train:
   B: 8
   num_epochs: 5
@@ -12,6 +16,11 @@ train:
     grid_size: [256.0, 256.0, 16.0]
     min_bound: [-12.800000191469727, -12.800000191469727, -1.0]
     max_bound: [12.800000191469727, 12.800000191469727, 0.6]
+test:
+  grid_params:
+    grid_size: [513.0, 513.0, 17.0] #[512.0, 512.0, 32.0]
+    min_bound: [-25.6, -25.6, -2.0]
+    max_bound: [25.6, 25.6, 1.2]
 filter_size: 15
 kernel: "sparse"
 ell: 0.3
