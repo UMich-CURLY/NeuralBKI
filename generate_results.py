@@ -20,7 +20,6 @@ from torch.utils.data import Dataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 # Custom Imports
-from Benchmarks.eval_utils import iou_one_frame
 from Data.utils import *
 from Models.model_utils import *
 from Models.ConvBKI import *
