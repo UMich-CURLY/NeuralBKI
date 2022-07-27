@@ -21,10 +21,11 @@ from Models.ConvBKI import *
 from Data.Rellis3D import Rellis3dDataset
 from Data.SemanticKitti import KittiDataset
 
-MODEL_NAME = "ConvBKI_PerClass"
+MODEL_NAME = "ConvBKI_PerClass_Compound"
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print("device is ", device)
+print("Model is", MODEL_NAME)
 
 model_params_file = os.path.join(os.getcwd(), "Config", MODEL_NAME + ".yaml")
 with open(model_params_file, "r") as stream:
@@ -37,6 +38,7 @@ with open(model_params_file, "r") as stream:
 
 # CONSTANTS
 SEED = model_params["seed"]
+DEBUG_MODE = model_params["debug_mode"]
 NUM_FRAMES = model_params["num_frames"]
 MODEL_RUN_DIR = os.path.join("Models", "Runs", SAVE_NAME)
 NUM_WORKERS = model_params["num_workers"]
@@ -77,20 +79,26 @@ model_params["datatype"] = FLOAT_TYPE
 model = get_model(MODEL_NAME, model_params=model_params)
 
 if dataset == "rellis":
-    train_ds = Rellis3dDataset(model_params["train"]["grid_params"], directory=TRAIN_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=False)
-    val_ds = Rellis3dDataset(model_params["train"]["grid_params"], directory=TRAIN_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=False, data_split="val")
+    train_ds = Rellis3dDataset(model_params["train"]["grid_params"], directory=TRAIN_DIR, device=device,
+                               num_frames=NUM_FRAMES, remap=True, use_aug=False)
+    val_ds = Rellis3dDataset(model_params["train"]["grid_params"], directory=TRAIN_DIR, device=device,
+                             num_frames=NUM_FRAMES, remap=True, use_aug=False, data_split="val")
 if dataset == "semantic_kitti":
-    train_ds = KittiDataset(model_params["train"]["grid_params"], directory=TRAIN_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=False)
-    val_ds = KittiDataset(model_params["train"]["grid_params"], directory=TRAIN_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=False, data_split="val")
+    # Save splits info
+    train_ds = KittiDataset(model_params["train"]["grid_params"], directory=TRAIN_DIR, device=device,
+                            num_frames=NUM_FRAMES, remap=True, use_aug=False)
+    val_ds = KittiDataset(model_params["train"]["grid_params"], directory=TRAIN_DIR, device=device,
+                          num_frames=NUM_FRAMES, remap=True, use_aug=False, data_split="val")
 
 dataloader_train = DataLoader(train_ds, batch_size=B, shuffle=True, collate_fn=train_ds.collate_fn, num_workers=NUM_WORKERS)
-dataloader_val = DataLoader(val_ds, batch_size=B, shuffle=True, collate_fn=val_ds.collate_fn, num_workers=NUM_WORKERS)
+dataloader_val = DataLoader(val_ds, batch_size=B, shuffle=False, collate_fn=val_ds.collate_fn, num_workers=NUM_WORKERS)
 
 trial_dir = MODEL_RUN_DIR
 save_dir = os.path.join("Models", "Weights", SAVE_NAME)
-if os.path.exists(save_dir):
-    print("Error: path already exists")
-    exit()
+if not DEBUG_MODE:
+    if os.path.exists(save_dir):
+        print("Error: path already exists")
+        exit()
 
 if not os.path.exists(trial_dir):
     os.makedirs(trial_dir)
@@ -101,8 +109,10 @@ writer = SummaryWriter(MODEL_RUN_DIR)
 
 # Optimizer setup
 setup_seed(SEED)
-optimizer = optim.Adam(model.parameters(), lr=lr, betas=(BETA1, BETA2))
-# optimizer = optim.SGD(model.parameters(), lr=lr)
+if model_params["train"]["opt"] == "Adam":
+    optimizer = optim.Adam(model.parameters(), lr=lr, betas=(BETA1, BETA2))
+else:
+    optimizer = optim.SGD(model.parameters(), lr=lr)
 my_lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=optimizer, gamma=decayRate)
 torch.optim.lr_scheduler.CosineAnnealingLR(optimizer=optimizer, T_max=100, eta_min=1e-4, verbose=True)
 
@@ -111,12 +121,17 @@ min_bound_torch = torch.from_numpy(train_ds.min_bound).to(device=device)
 grid_dims_torch = torch.from_numpy(train_ds.grid_dims).to(dtype=torch.int, device=device)
 voxel_sizes_torch = torch.from_numpy(train_ds.voxel_sizes).to(device=device)
 
+if DEBUG_MODE:
+    rospy.init_node('talker', anonymous=True)
+    map_pub = rospy.Publisher('SemMap_global', MarkerArray, queue_size=10)
+
 
 def semantic_loop(dataloader, epoch, train_count=None, training=False):
     num_correct = 0
     num_total = 0
     all_intersections = np.zeros(NUM_CLASSES)
     all_unions = np.zeros(NUM_CLASSES) + 1e-6  # SMOOTHING
+    next_map = MarkerArray()
 
     for points, points_labels, gt_labels in dataloader:
         batch_gt = torch.zeros((0, 1), device=device, dtype=LABEL_TYPE)
@@ -126,8 +141,12 @@ def semantic_loop(dataloader, epoch, train_count=None, training=False):
         for b in range(len(points)):
             current_map = model.initialize_grid()
 
-            pc_np = np.vstack(np.array(points[b]))
-            labels_np = np.vstack(np.array(points_labels[b]))
+            if model_params["train"]["remove_last"]:
+                pc_np = np.vstack(np.array(points[b][:-1]))
+                labels_np = np.vstack(np.array(points_labels[b][:-1]))
+            else:
+                pc_np = np.vstack(np.array(points[b]))
+                labels_np = np.vstack(np.array(points_labels[b]))
             labeled_pc = np.hstack((pc_np, labels_np))
 
             if labeled_pc.shape[0] == 0:  # Zero padded
@@ -138,6 +157,17 @@ def semantic_loop(dataloader, epoch, train_count=None, training=False):
             preds = model(current_map, labeled_pc_torch)
             gt_sem_labels = torch.from_numpy(gt_labels[b]).to(device=device)
 
+            if DEBUG_MODE:
+                grid_params = model_params["test"]["grid_params"]
+                colors = remap_colors(data_params["colors"])
+                if rospy.is_shutdown():
+                    exit("Closing Python")
+                try:
+                    next_map = publish_local_map(preds, model.centroids, grid_params, colors, next_map)
+                    map_pub.publish(next_map)
+                except:
+                    exit("Publishing broke")
+
             last_pc_torch = torch.from_numpy(points[b][-1]).to(device=device)
             sem_preds = points_to_voxels_torch(preds, last_pc_torch,
                                                min_bound_torch, grid_dims_torch, voxel_sizes_torch)
@@ -146,6 +176,7 @@ def semantic_loop(dataloader, epoch, train_count=None, training=False):
             sem_preds = sem_preds / torch.sum(sem_preds, dim=-1, keepdim=True)
 
             # Remove all that are 0 zero label
+            # TODO change to use ignore list
             non_void_mask = gt_sem_labels[:, 0] != 0
 
             batch_gt = torch.vstack((batch_gt, gt_sem_labels[non_void_mask, :]))
@@ -156,8 +187,9 @@ def semantic_loop(dataloader, epoch, train_count=None, training=False):
 
         if training:
             loss.backward()
+            print("H:", model.ell_h)
+            print("Z:", model.ell_z)
             optimizer.step()
-            print(model.ell)
 
         # Accuracy
         with torch.no_grad():
@@ -205,12 +237,13 @@ def save_filter(model, save_path):
 
 for epoch in range(EPOCH_NUM):
     # Save filters before any training
-    save_filter(model, os.path.join("Models", "Weights", SAVE_NAME, "filters" + str(epoch) + ".pt"))
+    if not DEBUG_MODE:
+        save_filter(model, os.path.join("Models", "Weights", SAVE_NAME, "filters" + str(epoch) + ".pt"))
 
     # Validation
-    model.eval()
-    with torch.no_grad():
-        semantic_loop(dataloader_val, epoch, training=False)
+    # model.eval()
+    # with torch.no_grad():
+    #     semantic_loop(dataloader_val, epoch, training=False)
 
     # Training
     model.train()

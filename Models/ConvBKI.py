@@ -9,7 +9,7 @@ import torch.nn.functional as F
 class ConvBKI(torch.nn.Module):
     def __init__(self, grid_size, min_bound, max_bound, filter_size=3,
                  num_classes=21, prior=0.001, device="cpu", datatype=torch.float32,
-                max_dist=0.5, kernel="sparse", per_class=False):
+                max_dist=0.5, kernel="sparse", per_class=False, compound=False):
         '''
         Input:
             grid_size: (x, y, z) int32 array, number of voxels
@@ -34,6 +34,7 @@ class ConvBKI(torch.nn.Module):
         self.device = device
         self.num_classes = num_classes
         self.per_class = per_class
+        self.compound = compound
         
         self.voxel_sizes = (self.max_bound.view(-1) - self.min_bound.view(-1)) / self.grid_size.to(self.device)
         
@@ -52,44 +53,66 @@ class ConvBKI(torch.nn.Module):
     def initialize_kernel(self):
         # Initialize with sparse kernel
         assert(self.filter_size % 2 == 1)
+        self.sigma = torch.tensor(1.0, device=self.device)  # Kernel must map to 0 to 1
 
         # Parameters
         if self.kernel == "sparse":
-            self.sigma = torch.tensor(1.0, device=self.device) # Kernel must map to 0 to 1
-            if self.per_class:
-                self.ell = torch.nn.Parameter(torch.tensor([self.max_dist] * self.num_classes, device=self.device))
+            if self.compound:
+                if self.per_class:
+                    self.ell_h = torch.nn.Parameter(torch.tensor([self.max_dist] * self.num_classes, device=self.device))
+                    self.ell_z = torch.nn.Parameter(torch.tensor([self.max_dist] * self.num_classes, device=self.device))
+                else:
+                    self.ell_h = torch.nn.Parameter(torch.tensor(self.max_dist, device=self.device, dtype=self.dtype))
+                    self.ell_z = torch.nn.Parameter(torch.tensor(self.max_dist, device=self.device, dtype=self.dtype))
             else:
-                self.ell = torch.nn.Parameter(torch.tensor(self.max_dist, device=self.device, dtype=self.dtype))
+                if self.per_class:
+                    self.ell = torch.nn.Parameter(torch.tensor([self.max_dist] * self.num_classes, device=self.device))
+                else:
+                    self.ell = torch.nn.Parameter(torch.tensor(self.max_dist, device=self.device, dtype=self.dtype))
 
         # Distances
         middle_ind = torch.floor(self.filter_size / 2)
-        self.kernel_dists = torch.zeros([1, 1, self.filter_size, self.filter_size, self.filter_size], device=self.device)
+        if self.compound:
+            self.kernel_dists_h = torch.zeros([1, 1, self.filter_size, self.filter_size, self.filter_size],
+                                            device=self.device)
+            self.kernel_dists_z = torch.zeros([1, 1, self.filter_size, self.filter_size, self.filter_size],
+                                            device=self.device)
+        else:
+            self.kernel_dists = torch.zeros([1, 1, self.filter_size, self.filter_size, self.filter_size],
+                                            device=self.device)
         for x_ind in range(self.filter_size):
             for y_ind in range(self.filter_size):
                 for z_ind in range(self.filter_size):
                     x_dist = torch.abs(x_ind - middle_ind) * self.voxel_sizes[0]
                     y_dist = torch.abs(y_ind - middle_ind) * self.voxel_sizes[1]
                     z_dist = torch.abs(z_ind - middle_ind) * self.voxel_sizes[2]
-                    total_dist = torch.sqrt(x_dist ** 2 + y_dist ** 2 + z_dist ** 2)
-                    self.kernel_dists[0, 0, x_ind, y_ind, z_ind] = total_dist
+                    if self.compound:
+                        horiz_dist = torch.sqrt(x_dist ** 2 + y_dist ** 2)
+                        vert_dist = torch.sqrt(z_dist ** 2)
+                        self.kernel_dists_h[0, 0, x_ind, y_ind, z_ind] = horiz_dist
+                        self.kernel_dists_z[0, 0, x_ind, y_ind, z_ind] = vert_dist
+                    else:
+                        total_dist = torch.sqrt(x_dist ** 2 + y_dist ** 2 + z_dist ** 2)
+                        self.kernel_dists[0, 0, x_ind, y_ind, z_ind] = total_dist
 
-    def calculate_kernel(self, d, i=0):
+    def sparse_kernel(self, d, ell, sigma):
+        kernel_val = sigma * ((1.0/3)*(2 + torch.cos(2 * self.pi * d/ell))*(1 - d/ell) +
+                              1.0/(2*self.pi) * torch.sin(2 * self.pi * d / ell))
+        kernel_val[d >= ell] = 0
+        return torch.clamp(kernel_val, min=0.0, max=1.0)
+
+    def calculate_kernel(self, i=0):
+        kernel_val = None
         if self.kernel == "sparse":
             if self.per_class:
-                kernel_val = self.sigma * (
-                        (1.0 / 3) * (2 + torch.cos(2 * self.pi * d / self.ell[i])) * (1 - d / self.ell[i]) +
-                        1.0 / (2 * self.pi) * torch.sin(2 * self.pi * d / self.ell[i])
-                )
-                kernel_val[d >= self.ell[i]] = 0
-                return torch.clamp(kernel_val, min=0.0, max=1.0)
+                if self.compound:
+                    kernel_val = self.sparse_kernel(self.kernel_dists_z, self.ell_z[i], self.sigma) * \
+                                 self.sparse_kernel(self.kernel_dists_h, self.ell_h[i], self.sigma)
+                else:
+                    kernel_val = self.sparse_kernel(self.kernel_dists, self.ell[i], self.sigma)
             else:
-                kernel_val = self.sigma * (
-                        (1.0/3)*(2 + torch.cos(2 * self.pi * d/self.ell))*(1 - d/self.ell) +
-                                 1.0/(2*self.pi) * torch.sin(2 * self.pi * d / self.ell)
-                                 )
-                kernel_val[d >= self.ell] = 0
-                return torch.clamp(kernel_val, min=0.0, max=1.0)
-        return None
+                kernel_val = self.sparse_kernel(self.kernel_dists, self.ell, self.sigma)
+        return kernel_val
 
     def initialize_grid(self):
         return torch.zeros(self.grid_size[0], self.grid_size[1], self.grid_size[2], 
@@ -126,9 +149,9 @@ class ConvBKI(torch.nn.Module):
                               device=self.device, dtype=self.dtype)
         for temp_class in range(self.num_classes):
             if self.per_class:
-                filters[temp_class, 0, :, :, :] = self.calculate_kernel(self.kernel_dists, i=temp_class)
+                filters[temp_class, 0, :, :, :] = self.calculate_kernel(i=temp_class)
             else:
-                filters[temp_class, 0, :, :, :] = self.calculate_kernel(self.kernel_dists)
+                filters[temp_class, 0, :, :, :] = self.calculate_kernel()
         return filters
 
     def forward(self, current_map, point_cloud):

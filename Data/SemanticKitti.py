@@ -44,9 +44,9 @@ def grid_ind(input_pc, labels, min_bound, max_bound, grid_size, voxel_sizes):
 
 # TODO: Load this from YAML
 SPLIT_SEQUENCES = {
-    "train": ["00"],
-    "val": ["04"],
-    "test": ["11"]
+    "train": ["00", "01", "02", "03", "04", "05", "06", "07", "09", "10"],
+    "val": ["08"],
+    "test": ["11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21"]
 }
 
 
@@ -71,24 +71,21 @@ class KittiDataset(Dataset):
     Access to the processed data, including evaluation labels predictions velodyne poses times
     """
 
-    def __init__(self, 
-            grid_params,
-            directory="/home/jason/Data/kitti",
-            device='cuda',
-            num_frames=4,
-            voxelize_input=True,
-            binary_counts=False,
-            random_flips=False,
-            use_aug=True,
-            apply_transform=True,
-            remap=True,
-            data_split='train'
-            ):
-        
-
+    def __init__(self,
+                grid_params,
+                directory="/home/jason/Data/kitti",
+                device='cuda',
+                num_frames=4,
+                voxelize_input=True,
+                binary_counts=False,
+                random_flips=False,
+                use_aug=True,
+                apply_transform=True,
+                remap=True,
+                data_split='train'
+                 ):
         self.use_aug = use_aug
         self.apply_transform = apply_transform
-
 
         self._grid_size = grid_params['grid_size']
         self.grid_dims = np.asarray(self._grid_size)
@@ -295,7 +292,7 @@ class KittiDataset(Dataset):
 
                 points = points.astype(np.float32) #[:, [1, 0, 2]]
                 labels = labels.astype(np.uint8)
-            
+
             current_points.append(points)
             current_labels.append(labels)
 

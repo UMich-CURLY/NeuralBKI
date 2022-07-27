@@ -89,3 +89,58 @@ def publish_voxels(map_object, min_dim, max_dim, grid_dims, colors, next_map):
 
     next_map.markers.append(marker)
     return next_map
+
+
+def publish_local_map(labeled_grid, centroids, grid_params, colors, next_map):
+    max_dim = grid_params["max_bound"]
+    min_dim = grid_params["min_bound"]
+    grid_dims = grid_params["grid_size"]
+
+    next_map.markers.clear()
+    marker = Marker()
+    marker.id = 0
+    marker.ns = "Local Semantic Map"
+    marker.header.frame_id = "map" # change this to match model + scene name LMSC_000001
+    marker.type = marker.CUBE_LIST
+    marker.action = marker.ADD
+    marker.lifetime.secs = 0
+    marker.header.stamp = rospy.Time.now()
+
+    marker.pose.orientation.x = 0.0
+    marker.pose.orientation.y = 0.0
+    marker.pose.orientation.z = 0.0
+    marker.pose.orientation.w = 1
+
+    marker.scale.x = (max_dim[0] - min_dim[0]) / grid_dims[0]
+    marker.scale.y = (max_dim[1] - min_dim[1]) / grid_dims[1]
+    marker.scale.z = (max_dim[2] - min_dim[2]) / grid_dims[2]
+
+    X, Y, Z, C = labeled_grid.shape
+    semantic_labels = labeled_grid.view(-1, C).detach().cpu().numpy()
+    centroids = centroids.detach().cpu().numpy()
+
+    semantic_sums = np.sum(semantic_labels, axis=-1, keepdims=True)
+    valid_mask = semantic_sums >= 1
+    valid_mask = valid_mask[:, 0]
+
+    semantic_labels = semantic_labels[valid_mask, :]
+    centroids = centroids[valid_mask, :]
+
+    semantic_labels = np.argmax(semantic_labels / np.sum(semantic_labels, axis=-1, keepdims=True), axis=-1)
+    semantic_labels = semantic_labels.reshape(-1, 1)
+
+    for i in range(semantic_labels.shape[0]):
+        pred = semantic_labels[i]
+        point = Point32()
+        color = ColorRGBA()
+        point.x = centroids[i, 0]
+        point.y = centroids[i, 1]
+        point.z = centroids[i, 2]
+        color.r, color.g, color.b = colors[pred].squeeze()
+
+        color.a = 1.0
+        marker.points.append(point)
+        marker.colors.append(color)
+
+    next_map.markers.append(marker)
+    return next_map

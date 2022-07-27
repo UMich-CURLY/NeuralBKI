@@ -30,6 +30,8 @@ class LocalMap(ConvBKI):
         self.ConvLayer.weight.requires_grad = False
         self.ConvLayer.weight[:, :, :, :, :] = weights.detach()[:, :, :, :, :]
 
+        self.ConvLayer.eval()
+
     def reset_grid(self):
         self.current_map = self.initialize_grid()
         self.pose = None

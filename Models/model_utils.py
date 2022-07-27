@@ -19,33 +19,21 @@ def get_model(model_name, model_params):
     # Model parameters
     grid_params = model_params["train"]["grid_params"]
     device = model_params["device"]
-    if model_name == "ConvBKI_Single":
+
+    try:
         model = ConvBKI(
-            torch.tensor([int(p) for p in grid_params['grid_size']], dtype=torch.long).to(device), # Grid size
-            torch.tensor(grid_params['min_bound']).to(device), # Lower bound
-            torch.tensor(grid_params['max_bound']).to(device), # Upper bound
+            torch.tensor([int(p) for p in grid_params['grid_size']], dtype=torch.long).to(device),  # Grid size
+            torch.tensor(grid_params['min_bound']).to(device),  # Lower bound
+            torch.tensor(grid_params['max_bound']).to(device),  # Upper bound
             num_classes=model_params["num_classes"],
             filter_size=model_params["filter_size"],
             device=device,
             datatype=model_params["datatype"],
             kernel=model_params["kernel"],
             max_dist=model_params["ell"],
-            per_class=False
+            per_class=model_params["per_class"],
+            compound=model_params["compound"]
         )
-    elif model_name == "ConvBKI_PerClass":
-        model = ConvBKI(
-            torch.tensor([int(p) for p in grid_params['grid_size']], dtype=torch.long).to(device), # Grid size
-            torch.tensor(grid_params['min_bound']).to(device), # Lower bound
-            torch.tensor(grid_params['max_bound']).to(device), # Upper bound
-            num_classes=model_params["num_classes"],
-            filter_size=model_params["filter_size"],
-            device=device,
-            datatype=model_params["datatype"],
-            kernel=model_params["kernel"],
-            max_dist=model_params["ell"],
-            per_class=True
-        )
-    else:
-        print("Currently only ConvBKI_Single or ConvBKI_PerClass is supported. Thank you.")
-        exit()
+    except:
+        exit("Invalid config file.")
     return model
