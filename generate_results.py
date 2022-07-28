@@ -27,7 +27,7 @@ from Data.Rellis3D import Rellis3dDataset
 from Models.mapping_utils import *
 from Data.SemanticKitti import KittiDataset
 
-MODEL_NAME = "ConvBKI_PerClass"
+MODEL_NAME = "ConvBKI_PerClass_Compound"
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print("device is ", device)
@@ -106,7 +106,8 @@ current_frame_id = None
 for idx in range(len(test_ds)):
     with torch.no_grad():
         # Load data
-        pose, points, pred_labels, gt_labels, scene_id, frame_id = test_ds.get_test_item(idx)
+        # pose, points, pred_labels, gt_labels, scene_id, frame_id = test_ds.get_test_item(idx)
+        pose, points, pred_labels, scene_id, frame_id = test_ds.get_test_item(idx)
 
         # Reset if new subsequence
         if scene_id != current_scene or (frame_id - 1) != current_frame_id:
@@ -122,7 +123,7 @@ for idx in range(len(test_ds)):
         current_scene = scene_id
         current_frame_id = frame_id
 
-        if VISUALIZE == True:
+        if VISUALIZE:
             if rospy.is_shutdown():
                 exit("Closing Python")
             try:

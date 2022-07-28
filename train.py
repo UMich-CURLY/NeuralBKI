@@ -86,7 +86,7 @@ if dataset == "rellis":
 if dataset == "semantic_kitti":
     # Save splits info
     train_ds = KittiDataset(model_params["train"]["grid_params"], directory=TRAIN_DIR, device=device,
-                            num_frames=NUM_FRAMES, remap=True, use_aug=False)
+                            num_frames=NUM_FRAMES, remap=True, use_aug=True)
     val_ds = KittiDataset(model_params["train"]["grid_params"], directory=TRAIN_DIR, device=device,
                           num_frames=NUM_FRAMES, remap=True, use_aug=False, data_split="val")
 

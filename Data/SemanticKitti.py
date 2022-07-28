@@ -327,7 +327,7 @@ class KittiDataset(Dataset):
             voxel_grid[t_i, unique_voxels[:, 0], unique_voxels[:, 1], unique_voxels[:, 2]] += counts
         return voxel_grid
 
-    def get_test_item(self, idx):
+    def get_test_item(self, idx, get_gt=False):
             frame_id = idx # Frame ID in current scene ID
             global_pose = self.get_pose(frame_id)
             if frame_id > 0:
@@ -335,28 +335,35 @@ class KittiDataset(Dataset):
             else: 
                 prior_pose = global_pose
             points = np.fromfile(self._velodyne_list[frame_id], dtype=np.float32).reshape(-1, 4)[:, :3]
-            gt_labels = np.fromfile(self._label_list[frame_id], dtype=np.uint32) & 0xFFFF 
-            gt_labels = gt_labels.reshape((-1)).astype(np.uint8)
+            if get_gt:
+                gt_labels = np.fromfile(self._label_list[frame_id], dtype=np.uint32) & 0xFFFF
+                gt_labels = gt_labels.reshape((-1)).astype(np.uint8)
             pred_labels = np.fromfile(self._pred_list[frame_id], dtype=np.uint32).reshape((-1)).astype(np.uint8)
 
             # Filter points outside of voxel grid
             grid_point_mask = np.all( (points < self.max_bound) & (points >= self.min_bound), axis=1)
             points = points[grid_point_mask, :]
-            gt_labels = gt_labels[grid_point_mask]
+            if get_gt:
+                gt_labels = gt_labels[grid_point_mask]
             pred_labels = pred_labels[grid_point_mask]
 
             # Remove zero labels
-            void_mask = gt_labels != 0
-            points = points[void_mask, :]
-            gt_labels = gt_labels[void_mask]
-            pred_labels = pred_labels[void_mask]
+            if get_gt:
+                void_mask = gt_labels != 0
+                points = points[void_mask, :]
+                gt_labels = gt_labels[void_mask]
+                pred_labels = pred_labels[void_mask]
 
             if self.remap:
                 # gt_labels = self.LABELS_REMAP[gt_labels].astype(np.uint8)
                 # pred_labels = self.LABELS_REMAP[pred_labels].astype(np.uint8)
-                for i in range(gt_labels.shape[0]):
-                    gt_labels[i] = LABELS_REMAP[gt_labels[i]]
+                for i in range(pred_labels.shape[0]):
+                    if get_gt:
+                        gt_labels[i] = LABELS_REMAP[gt_labels[i]]
                     pred_labels[i] = LABELS_REMAP[pred_labels[i]]
             scene_id = 0
 
-            return global_pose, points, pred_labels.astype(np.uint8).reshape(-1, 1), gt_labels.astype(np.uint8).reshape(-1, 1), scene_id, frame_id
+            if get_gt:
+                return global_pose, points, pred_labels.astype(np.uint8).reshape(-1, 1), gt_labels.astype(np.uint8).reshape(-1, 1), scene_id, frame_id
+            else:
+                return global_pose, points, pred_labels.astype(np.uint8).reshape(-1, 1), scene_id, frame_id

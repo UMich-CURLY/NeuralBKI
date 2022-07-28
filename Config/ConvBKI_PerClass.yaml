@@ -1,6 +1,6 @@
 dataset: "semantic_kitti"
 save_dir: "ConvBKI_PerClass_semantic_kitti"
-load_epoch: 0
+load_epoch: 4
 map_method: "global"
 visualize: True
 train:
@@ -11,16 +11,16 @@ train:
   BETA2: 0.999
   decayRate: 0.96
   remove_last: False
-  opt: "Adam"
+  opt: "SGD"
   grid_params:
     grid_size: [256.0, 256.0, 32.0]
     min_bound: [-12.8, -12.8, -2.6]
     max_bound: [12.8, 12.8, 0.6]
 test:
   grid_params:
-    grid_size: [513.0, 513.0, 17.0] #[512.0, 512.0, 32.0]
-    min_bound: [-25.6, -25.6, -2.0]
-    max_bound: [25.6, 25.6, 1.2]
+    grid_size: [513.0, 513.0, 33.0] #[512.0, 512.0, 32.0]
+    min_bound: [-25.65, -25.65, -2.65]
+    max_bound: [25.65, 25.65, 0.65]
 filter_size: 15
 kernel: "sparse"
 compound: False

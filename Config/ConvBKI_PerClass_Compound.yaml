@@ -6,7 +6,7 @@ visualize: True
 train:
   B: 16
   num_epochs: 5
-  lr: 0.007
+  lr: 0.05
   BETA1: 0.9
   BETA2: 0.999
   decayRate: 0.96
@@ -18,9 +18,9 @@ train:
     max_bound: [12.8, 12.8, 0.6]
 test:
   grid_params:
-    grid_size: [513.0, 513.0, 17.0] #[512.0, 512.0, 32.0]
-    min_bound: [-25.6, -25.6, -2.0]
-    max_bound: [25.6, 25.6, 1.2]
+    grid_size: [513.0, 513.0, 33.0] #[512.0, 512.0, 32.0]
+    min_bound: [-25.65, -25.65, -2.65]
+    max_bound: [25.65, 25.65, 0.65]
 filter_size: 15
 kernel: "sparse"
 compound: True
@@ -28,7 +28,7 @@ per_class: True
 ell: 0.3
 seed: 42
 
-num_frames: 16
+num_frames: 4
 num_workers: 16
 
 debug_mode: False
