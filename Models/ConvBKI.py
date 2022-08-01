@@ -131,7 +131,7 @@ class ConvBKI(torch.nn.Module):
         if max_bound is None:
             max_bound = self.max_bound
         input_xyz   = input_pc[:, :3]
-        labels      = input_pc[:, 3].view(-1, 1)
+        labels      = input_pc[:, 3:]
         
         valid_input_mask = torch.all((input_xyz < max_bound) & (input_xyz >= min_bound), axis=1)
         
@@ -154,6 +154,24 @@ class ConvBKI(torch.nn.Module):
                 filters[temp_class, 0, :, :, :] = self.calculate_kernel()
         return filters
 
+    def add_to_update(self, update, grid_pc, continuous=False):
+        if continuous:
+            # Solution inspired by https://github.com/facebookresearch/SparseConvNet/blob/main/sparseconvnet/utils.py
+            xyz = grid_pc[:, :3]
+            feat = grid_pc[:, 3:]
+            xyz, inv, counts = torch.unique(xyz, dim=0, return_inverse=True, return_counts=True)
+            feat_out = torch.zeros(xyz.size(0), feat.size(1), dtype=torch.float32, device=self.device)
+            feat_out.index_add_(0, inv, feat)
+            grid_ind = xyz.to(torch.long)
+            update[grid_ind[:, 0], grid_ind[:, 1], grid_ind[:, 2]] = feat_out
+
+        else:
+            unique_inds, counts = torch.unique(grid_pc.to(torch.long), return_counts=True, dim=0)
+            counts = counts.type(torch.long)
+            grid_indices = [unique_inds[:, i] for i in range(grid_pc.shape[1])]
+            update[grid_indices] = update[grid_indices] + counts
+        return update
+
     def forward(self, current_map, point_cloud):
         '''
         Input:
@@ -165,15 +183,15 @@ class ConvBKI(torch.nn.Module):
         # Assume map and point cloud are already aligned
         X, Y, Z, C = current_map.shape
         update = torch.zeros_like(current_map, requires_grad=False)
+
+        N, C = point_cloud.shape
+        continuous = False
+        if C == self.num_classes + 3:
+            continuous = True
         
         # 1: Discretize
-        grid_pc = self.grid_ind(point_cloud).to(torch.long)
-       
-        unique_inds, counts = torch.unique(grid_pc, return_counts=True, dim=0)
-        counts = counts.type(torch.long)
-
-        grid_indices = [unique_inds[:, i] for i in range(grid_pc.shape[1])]
-        update[grid_indices] = update[grid_indices] + counts
+        grid_pc = self.grid_ind(point_cloud)
+        update = self.add_to_update(update, grid_pc, continuous)
         
         # 2: Apply BKI filters
         filters = self.get_filters()

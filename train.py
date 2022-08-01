@@ -21,7 +21,7 @@ from Models.ConvBKI import *
 from Data.Rellis3D import Rellis3dDataset
 from Data.SemanticKitti import KittiDataset
 
-MODEL_NAME = "ConvBKI_PerClass_Compound"
+MODEL_NAME = "ConvBKI_PerClass_Compound_Cont"
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print("device is ", device)
@@ -44,6 +44,9 @@ MODEL_RUN_DIR = os.path.join("Models", "Runs", SAVE_NAME)
 NUM_WORKERS = model_params["num_workers"]
 FLOAT_TYPE = torch.float32
 LABEL_TYPE = torch.uint8
+FROM_CONT = model_params["from_continuous"]
+TO_CONT = model_params["to_continuous"]
+PRED_PATH = model_params["pred_path"]
 
 if not os.path.exists(MODEL_RUN_DIR):
     os.makedirs(MODEL_RUN_DIR)
@@ -86,9 +89,11 @@ if dataset == "rellis":
 if dataset == "semantic_kitti":
     # Save splits info
     train_ds = KittiDataset(model_params["train"]["grid_params"], directory=TRAIN_DIR, device=device,
-                            num_frames=NUM_FRAMES, remap=True, use_aug=True)
+                            num_frames=NUM_FRAMES, remap=True, use_aug=True, data_split="train", from_continuous=FROM_CONT,
+                            to_continuous=TO_CONT, pred_path=PRED_PATH)
     val_ds = KittiDataset(model_params["train"]["grid_params"], directory=TRAIN_DIR, device=device,
-                          num_frames=NUM_FRAMES, remap=True, use_aug=False, data_split="val")
+                          num_frames=NUM_FRAMES, remap=True, use_aug=False, data_split="val", from_continuous=FROM_CONT,
+                          to_continuous=TO_CONT, pred_path=PRED_PATH)
 
 dataloader_train = DataLoader(train_ds, batch_size=B, shuffle=True, collate_fn=train_ds.collate_fn, num_workers=NUM_WORKERS)
 dataloader_val = DataLoader(val_ds, batch_size=B, shuffle=False, collate_fn=val_ds.collate_fn, num_workers=NUM_WORKERS)

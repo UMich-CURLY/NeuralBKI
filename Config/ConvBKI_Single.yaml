@@ -3,6 +3,7 @@ save_dir: "ConvBKI_Single_semantic_kitti"
 load_epoch: 0
 map_method: "global"
 visualize: True
+continuous: False
 train:
   B: 8
   num_epochs: 5

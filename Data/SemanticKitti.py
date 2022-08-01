@@ -82,15 +82,21 @@ class KittiDataset(Dataset):
                 use_aug=True,
                 apply_transform=True,
                 remap=True,
-                data_split='train'
-                 ):
+                data_split='train',
+                from_continuous=False,
+                to_continuous=False,
+                pred_path="predictions_darknet",
+                num_classes=20
+                ):
+        self.from_continuous = from_continuous
+        self.to_continuous = to_continuous
         self.use_aug = use_aug
         self.apply_transform = apply_transform
+        self.num_classes = num_classes
 
         self._grid_size = grid_params['grid_size']
         self.grid_dims = np.asarray(self._grid_size)
         self._eval_size = list(np.uint32(self._grid_size))
-        # self.coor_ranges = [-25.6,-25.6,-2] + [25.6,25.6,4.4]
         self.coor_ranges = grid_params['min_bound'] + grid_params['max_bound']
         self.voxel_sizes = [abs(self.coor_ranges[3] - self.coor_ranges[0]) / self._grid_size[0], 
                       abs(self.coor_ranges[4] - self.coor_ranges[1]) / self._grid_size[1],
@@ -127,8 +133,7 @@ class KittiDataset(Dataset):
         for seq in self._seqs:
             velodyne_dir = os.path.join(self._directory, seq, 'velodyne')
             label_dir = os.path.join(self._directory, seq, 'labels')
-            preds_dir = os.path.join(self._directory, seq, 'predictions_darknet') # jingyu add preds
-            # eval_dir = os.path.join(self._directory, seq, 'voxels')
+            preds_dir = os.path.join(self._directory, seq, pred_path)
             self._num_frames_scene.append(len(os.listdir(velodyne_dir)))
             frames_list = [os.path.splitext(filename)[0] for filename in sorted(os.listdir(velodyne_dir))]
             
@@ -141,10 +146,7 @@ class KittiDataset(Dataset):
             self._frames_list.extend(frames_list)
             self._velodyne_list.extend([os.path.join(velodyne_dir, str(frame).zfill(6)+'.bin') for frame in frames_list])
             self._label_list.extend([os.path.join(label_dir, str(frame).zfill(6)+'.label') for frame in frames_list])
-            self._pred_list.extend([os.path.join(preds_dir, str(frame).zfill(6)+'.label') for frame in frames_list]) # jingyu add preds
-            # self._eval_labels.extend([os.path.join(eval_dir, str(frame).zfill(6)+'.label') for frame in frames_list])
-            # self._eval_valid.extend([os.path.join(eval_dir, str(frame).zfill(6) + '.invalid') for frame in frames_list])
-        # assert len(self._eval_labels) == np.sum(self._num_frames_scene), f"inconsitent number of frames detected, check the dataset"
+            self._pred_list.extend([os.path.join(preds_dir, str(frame).zfill(6)+'.label') for frame in frames_list])
         assert len(self._velodyne_list) == np.sum(self._num_frames_scene), f"inconsitent number of frames detected, check the dataset"
         # self._poses = np.concatenate(self._poses)
         
@@ -248,11 +250,13 @@ class KittiDataset(Dataset):
         aug_mat = self.get_aug_matrix(aug_index)
         gt_labels = None
 
-        t_i = 0
         for i in idx_range:
             if i == -1: # Zero pad
                 points = np.zeros((1, 3), dtype=np.float32)
-                labels = np.zeros((1,), dtype=np.uint8)
+                if self.to_continuous:
+                    labels = np.zeros((1,self.num_classes), dtype=np.float32)
+                else:
+                    labels = np.zeros((1,), dtype=np.uint8)
             else:
                 points = np.fromfile(self._velodyne_list[i],dtype=np.float32).reshape(-1,4)[:, :3]
                 if self.apply_transform:
@@ -261,8 +265,13 @@ class KittiDataset(Dataset):
                     points = np.dot(relative_pose[:3, :3], points.T).T + relative_pose[:3, 3]
 
                 temp_gt_labels = np.fromfile(self._label_list[i], dtype=np.uint32) & 0xFFFF 
-                temp_gt_labels = temp_gt_labels.reshape((-1)).astype(np.uint8)                
-                labels = np.fromfile(self._pred_list[i], dtype=np.uint32).reshape((-1)).astype(np.uint8)
+                temp_gt_labels = temp_gt_labels.reshape((-1)).astype(np.uint8)
+                if not self.from_continuous:
+                    labels = np.fromfile(self._pred_list[i], dtype=np.uint32).reshape((-1)).astype(np.uint8)
+                if self.from_continuous:
+                    labels = np.fromfile(self._pred_list[i], dtype=np.float32).reshape((-1, self.num_classes))
+                    if not self.to_continuous:
+                        labels = np.argmax(labels, axis=0)
 
                 # Perform data augmentation on points
                 if self.use_aug:
@@ -274,24 +283,33 @@ class KittiDataset(Dataset):
 
                 points = points[grid_point_mask, :]
                 temp_gt_labels = temp_gt_labels[grid_point_mask]
-                labels = labels[grid_point_mask]
+                if self.to_continuous:
+                    labels = labels[grid_point_mask, :]
+                else:
+                    labels = labels[grid_point_mask]
 
                 # Remove zero labels
                 void_mask = temp_gt_labels != 0
                 points = points[void_mask, :]
                 temp_gt_labels = temp_gt_labels[void_mask]
-                labels = labels[void_mask]
+                if self.to_continuous:
+                    labels = labels[void_mask, :]
+                else:
+                    labels = labels[void_mask]
 
                 if self.remap:
                     temp_gt_labels = self._remap_lut[temp_gt_labels].astype(np.uint8)
-                    labels = self._remap_lut[labels].astype(np.uint8)
+                    if not self.to_continuous:
+                        labels = self._remap_lut[labels].astype(np.uint8)
                 if i == idx_range[-1]:
                     gt_labels = temp_gt_labels
-                
-                labels = labels.reshape(-1, 1)
+
+                if not self.to_continuous:
+                    labels = labels.reshape(-1, 1)
 
                 points = points.astype(np.float32) #[:, [1, 0, 2]]
-                labels = labels.astype(np.uint8)
+                if not self.to_continuous:
+                    labels = labels.astype(np.uint8)
 
             current_points.append(points)
             current_labels.append(labels)
@@ -355,8 +373,6 @@ class KittiDataset(Dataset):
                 pred_labels = pred_labels[void_mask]
 
             if self.remap:
-                # gt_labels = self.LABELS_REMAP[gt_labels].astype(np.uint8)
-                # pred_labels = self.LABELS_REMAP[pred_labels].astype(np.uint8)
                 for i in range(pred_labels.shape[0]):
                     if get_gt:
                         gt_labels[i] = LABELS_REMAP[gt_labels[i]]

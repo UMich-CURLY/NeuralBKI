@@ -52,6 +52,7 @@ MAP_METHOD = model_params["map_method"]
 LOAD_EPOCH = model_params["load_epoch"]
 LOAD_DIR = model_params["save_dir"]
 VISUALIZE = model_params["visualize"]
+MEAS_RESULT = model_params["meas_result"]
 
 # Data Parameters
 data_params_file = os.path.join(os.getcwd(), "Config", dataset + ".yaml")
@@ -66,9 +67,15 @@ with open(data_params_file, "r") as stream:
 
 # Load data set
 if dataset == "rellis":
-    test_ds = Rellis3dDataset(model_params["test"]["grid_params"], directory=DATA_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=False, data_split="test")
+    test_ds = Rellis3dDataset(model_params["test"]["grid_params"], directory=DATA_DIR, device=device,
+                              num_frames=NUM_FRAMES, remap=True, use_aug=False, data_split="test")
 elif dataset == "semantic_kitti":
-    test_ds = KittiDataset(model_params["test"]["grid_params"], directory=DATA_DIR, device=device, num_frames=NUM_FRAMES, remap=True, use_aug=False, data_split="test")
+    if MEAS_RESULT:
+        test_ds = KittiDataset(model_params["test"]["grid_params"], directory=DATA_DIR, device=device,
+                               num_frames=NUM_FRAMES, remap=True, use_aug=False, data_split=model_params["result_split"])
+    else:
+        test_ds = KittiDataset(model_params["test"]["grid_params"], directory=DATA_DIR, device=device,
+                               num_frames=NUM_FRAMES, remap=True, use_aug=False, data_split="test")
 dataloader_test = DataLoader(test_ds, batch_size=1, shuffle=False, collate_fn=test_ds.collate_fn, num_workers=NUM_WORKERS)
 
 
@@ -106,8 +113,10 @@ current_frame_id = None
 for idx in range(len(test_ds)):
     with torch.no_grad():
         # Load data
-        # pose, points, pred_labels, gt_labels, scene_id, frame_id = test_ds.get_test_item(idx)
-        pose, points, pred_labels, scene_id, frame_id = test_ds.get_test_item(idx)
+        if MEAS_RESULT:
+            pose, points, pred_labels, gt_labels, scene_id, frame_id = test_ds.get_test_item(idx, get_gt=True)
+        else:
+            pose, points, pred_labels, scene_id, frame_id = test_ds.get_test_item(idx)
 
         # Reset if new subsequence
         if scene_id != current_scene or (frame_id - 1) != current_frame_id:
@@ -131,3 +140,7 @@ for idx in range(len(test_ds)):
                 map_pub.publish(map)
             except:
                 exit("Publishing broke")
+
+        if MEAS_RESULT:
+
+            print(pred_labels.shape, gt_labels.shape)

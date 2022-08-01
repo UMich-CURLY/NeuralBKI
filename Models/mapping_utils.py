@@ -148,7 +148,6 @@ class GlobalMap(ConvBKI):
             outside_mask = ~ inside_mask
             # Add new cells
             self.global_map = np.vstack((self.global_map[outside_mask, :], new_cells.detach().cpu().numpy()))
-        print(self.global_map.shape)
         return self.global_map
 
     # Propagate map given a transformation matrix

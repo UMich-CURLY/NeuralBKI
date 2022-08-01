@@ -1,11 +1,13 @@
 dataset: "semantic_kitti"
-save_dir: "ConvBKI_PerClass_Compound_semantic_kitti"
+save_dir: "ConvBKI_PerClass_Compound_Cont_semantic_kitti"
 load_epoch: 0
 map_method: "global"
 visualize: False
 meas_result: True
 result_split: "train"
-continuous: False
+from_continuous: True
+to_continuous: True
+pred_path: "pred_probability"
 train:
   B: 16
   num_epochs: 5
