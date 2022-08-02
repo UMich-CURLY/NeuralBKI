@@ -271,7 +271,7 @@ class KittiDataset(Dataset):
                 if self.from_continuous:
                     labels = np.fromfile(self._pred_list[i], dtype=np.float32).reshape((-1, self.num_classes))
                     if not self.to_continuous:
-                        labels = np.argmax(labels, axis=0)
+                        labels = np.argmax(labels, axis=1) #TODO Jingyu edit here: axis=0 seems to be a typo
 
                 # Perform data augmentation on points
                 if self.use_aug:

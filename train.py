@@ -21,7 +21,8 @@ from Models.ConvBKI import *
 from Data.Rellis3D import Rellis3dDataset
 from Data.SemanticKitti import KittiDataset
 
-MODEL_NAME = "ConvBKI_PerClass_Compound_Cont"
+# MODEL_NAME = "ConvBKI_PerClass_Compound_Cont"
+MODEL_NAME = "ConvBKI_PerClass"
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print("device is ", device)

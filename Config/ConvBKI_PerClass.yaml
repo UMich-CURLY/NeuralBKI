@@ -3,7 +3,12 @@ save_dir: "ConvBKI_PerClass_semantic_kitti"
 load_epoch: 4
 map_method: "global"
 visualize: True
+
 continuous: False
+from_continuous: True
+to_continuous: True
+pred_path: "pred_probability"
+
 train:
   B: 8
   num_epochs: 5
