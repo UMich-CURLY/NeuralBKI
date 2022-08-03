@@ -193,8 +193,9 @@ def semantic_loop(dataloader, epoch, train_count=None, training=False):
 
         if training:
             loss.backward()
-            # print("H:", model.ell_h)
-            # print("Z:", model.ell_z)
+            if model_params["compound"]:
+                print("H:", model.ell_h)
+                print("Z:", model.ell_z)
             optimizer.step()
 
         # Accuracy
