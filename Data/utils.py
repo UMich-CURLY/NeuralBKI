@@ -69,11 +69,17 @@ def publish_voxels(map_object, min_dim, max_dim, grid_dims, colors, next_map):
     marker.scale.z = (max_dim[2] - min_dim[2]) / grid_dims[2]
 
     semantic_labels = map_object.global_map[:,3:]
+    centroids = map_object.global_map[:, :3]
 
-    semantic_labels = np.argmax(semantic_labels / np.sum(semantic_labels, axis=-1, keepdims=True), axis=-1)
+    # Threshold here
+    total_probs = np.sum(semantic_labels, axis=-1, keepdims=False)
+    not_prior = total_probs > 1
+    semantic_labels = semantic_labels[not_prior, :]
+    centroids = centroids[not_prior, :]
+
+    semantic_labels = np.argmax(semantic_labels, axis=-1)
     semantic_labels = semantic_labels.reshape(-1, 1)
 
-    centroids = map_object.global_map[:,:3]
     for i in range(semantic_labels.shape[0]):
         pred = semantic_labels[i]
         point = Point32()
@@ -119,9 +125,8 @@ def publish_local_map(labeled_grid, centroids, grid_params, colors, next_map):
     semantic_labels = labeled_grid.view(-1, C).detach().cpu().numpy()
     centroids = centroids.detach().cpu().numpy()
 
-    semantic_sums = np.sum(semantic_labels, axis=-1, keepdims=True)
+    semantic_sums = np.sum(semantic_labels, axis=-1, keepdims=False)
     valid_mask = semantic_sums >= 1
-    valid_mask = valid_mask[:, 0]
 
     semantic_labels = semantic_labels[valid_mask, :]
     centroids = centroids[valid_mask, :]

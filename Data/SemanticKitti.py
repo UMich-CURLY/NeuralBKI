@@ -256,7 +256,7 @@ class KittiDataset(Dataset):
                 if self.to_continuous:
                     labels = np.zeros((1,self.num_classes), dtype=np.float32)
                 else:
-                    labels = np.zeros((1,), dtype=np.uint8)
+                    labels = np.zeros((1, 1), dtype=np.uint8)
             else:
                 points = np.fromfile(self._velodyne_list[i],dtype=np.float32).reshape(-1,4)[:, :3]
                 if self.apply_transform:
@@ -267,11 +267,11 @@ class KittiDataset(Dataset):
                 temp_gt_labels = np.fromfile(self._label_list[i], dtype=np.uint32) & 0xFFFF 
                 temp_gt_labels = temp_gt_labels.reshape((-1)).astype(np.uint8)
                 if not self.from_continuous:
-                    labels = np.fromfile(self._pred_list[i], dtype=np.uint32).reshape((-1)).astype(np.uint8)
+                    labels = np.fromfile(self._pred_list[i], dtype=np.uint32).reshape((-1, 1)).astype(np.uint8)
                 if self.from_continuous:
                     labels = np.fromfile(self._pred_list[i], dtype=np.float32).reshape((-1, self.num_classes))
                     if not self.to_continuous:
-                        labels = np.argmax(labels, axis=0)
+                        labels = np.argmax(labels, axis=1).reshape((-1, 1)).astype(np.uint8)
 
                 # Perform data augmentation on points
                 if self.use_aug:
@@ -283,33 +283,22 @@ class KittiDataset(Dataset):
 
                 points = points[grid_point_mask, :]
                 temp_gt_labels = temp_gt_labels[grid_point_mask]
-                if self.to_continuous:
-                    labels = labels[grid_point_mask, :]
-                else:
-                    labels = labels[grid_point_mask]
+                labels = labels[grid_point_mask, :]
 
                 # Remove zero labels
                 void_mask = temp_gt_labels != 0
                 points = points[void_mask, :]
                 temp_gt_labels = temp_gt_labels[void_mask]
-                if self.to_continuous:
-                    labels = labels[void_mask, :]
-                else:
-                    labels = labels[void_mask]
+                labels = labels[void_mask, :]
 
                 if self.remap:
                     temp_gt_labels = self._remap_lut[temp_gt_labels].astype(np.uint8)
-                    if not self.to_continuous:
+                    if not self.from_continuous:
                         labels = self._remap_lut[labels].astype(np.uint8)
                 if i == idx_range[-1]:
                     gt_labels = temp_gt_labels
 
-                if not self.to_continuous:
-                    labels = labels.reshape(-1, 1)
-
                 points = points.astype(np.float32) #[:, [1, 0, 2]]
-                if not self.to_continuous:
-                    labels = labels.astype(np.uint8)
 
             current_points.append(points)
             current_labels.append(labels)
@@ -356,30 +345,36 @@ class KittiDataset(Dataset):
             if get_gt:
                 gt_labels = np.fromfile(self._label_list[frame_id], dtype=np.uint32) & 0xFFFF
                 gt_labels = gt_labels.reshape((-1)).astype(np.uint8)
-            pred_labels = np.fromfile(self._pred_list[frame_id], dtype=np.uint32).reshape((-1)).astype(np.uint8)
+            if not self.from_continuous:
+                pred_labels = np.fromfile(self._pred_list[frame_id], dtype=np.uint32).reshape((-1, 1)).astype(np.uint8)
+            if self.from_continuous:
+                pred_labels = np.fromfile(self._pred_list[frame_id], dtype=np.float32).reshape((-1, self.num_classes))
+                if not self.to_continuous:
+                    pred_labels = np.argmax(pred_labels, axis=1).reshape((-1, 1))
 
             # Filter points outside of voxel grid
             grid_point_mask = np.all( (points < self.max_bound) & (points >= self.min_bound), axis=1)
             points = points[grid_point_mask, :]
             if get_gt:
                 gt_labels = gt_labels[grid_point_mask]
-            pred_labels = pred_labels[grid_point_mask]
+            pred_labels = pred_labels[grid_point_mask, :]
 
             # Remove zero labels
             if get_gt:
                 void_mask = gt_labels != 0
                 points = points[void_mask, :]
                 gt_labels = gt_labels[void_mask]
-                pred_labels = pred_labels[void_mask]
+                pred_labels = pred_labels[void_mask, :]
 
             if self.remap:
                 for i in range(pred_labels.shape[0]):
                     if get_gt:
                         gt_labels[i] = LABELS_REMAP[gt_labels[i]]
-                    pred_labels[i] = LABELS_REMAP[pred_labels[i]]
+                    if not self.from_continuous:
+                        pred_labels[i, :] = LABELS_REMAP[int(pred_labels[i, :])]
             scene_id = 0
 
             if get_gt:
-                return global_pose, points, pred_labels.astype(np.uint8).reshape(-1, 1), gt_labels.astype(np.uint8).reshape(-1, 1), scene_id, frame_id
+                return global_pose, points, pred_labels, gt_labels.astype(np.uint8).reshape(-1, 1), scene_id, frame_id
             else:
-                return global_pose, points, pred_labels.astype(np.uint8).reshape(-1, 1), scene_id, frame_id
+                return global_pose, points, pred_labels, None, scene_id, frame_id

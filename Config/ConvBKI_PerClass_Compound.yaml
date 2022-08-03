@@ -1,13 +1,15 @@
 dataset: "semantic_kitti"
-save_dir: "ConvBKI_PerClass_Compound_semantic_kitti"
-load_epoch: 0
+save_dir: "ConvBKI_Compound_semantic_kitti"
+load_epoch: 4
 map_method: "global"
 visualize: False
 meas_result: True
 result_split: "train"
-continuous: False
+from_continuous: True
+to_continuous: False
+pred_path: "pred_probability"
 train:
-  B: 16
+  B: 8
   num_epochs: 5
   lr: 0.05
   BETA1: 0.9
@@ -16,14 +18,14 @@ train:
   remove_last: True
   opt: "SGD"
   grid_params:
-    grid_size: [256.0, 256.0, 32.0]
-    min_bound: [-12.8, -12.8, -2.6]
-    max_bound: [12.8, 12.8, 0.6]
+    grid_size: [512.0, 512.0, 32.0]
+    min_bound: [-25.6, -25.6, -2.6]
+    max_bound: [25.6, 25.6, 0.6]
 test:
   grid_params:
-    grid_size: [513.0, 513.0, 33.0] #[512.0, 512.0, 32.0]
-    min_bound: [-25.65, -25.65, -2.65]
-    max_bound: [25.65, 25.65, 0.65]
+    grid_size: [1025.0, 1025.0, 33.0] #[512.0, 512.0, 32.0]
+    min_bound: [-51.25, -51.25, -2.65]
+    max_bound: [51.25, 51.25, 0.65]
 filter_size: 15
 kernel: "sparse"
 compound: True
@@ -34,4 +36,4 @@ seed: 42
 num_frames: 4
 num_workers: 16
 
-debug_mode: False
+debug_mode: True

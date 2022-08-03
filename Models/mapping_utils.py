@@ -99,34 +99,45 @@ class GlobalMap(ConvBKI):
         inside = np.all((self.global_map[:, :3] >= min_bounds) & (self.global_map[:, :3] < max_bounds), axis=1)
         return inside
 
-    # Uses saved weights instead of generating a filter
-    def update_map(self, semantic_preds):
+    def get_local_map(self, min_bound=None, max_bound=None):
         # Fetch local map from CPU (anything not seen is prior)
         local_map = self.initialize_grid()
-        local_min_bound = self.min_bound + torch.from_numpy(self.voxel_translation).to(self.device)
-        local_max_bound = self.max_bound + torch.from_numpy(self.voxel_translation).to(self.device)
+        inside_mask = None
+        if min_bound is None:
+            min_bound = self.min_bound
+        if max_bound is None:
+            max_bound = self.max_bound
+        local_min_bound = min_bound + torch.from_numpy(self.voxel_translation).to(self.device)
+        local_max_bound = max_bound + torch.from_numpy(self.voxel_translation).to(self.device)
         if self.global_map is not None:
             inside_mask = self.inside_mask(local_min_bound.detach().cpu().numpy(), local_max_bound.detach().cpu().numpy())
             allocated_map = torch.tensor(self.global_map[inside_mask], device=self.device, dtype=self.dtype)
             grid_map = self.grid_ind(allocated_map, min_bound=local_min_bound, max_bound=local_max_bound)
             grid_indices = grid_map[:, :3].to(torch.long)
             local_map[grid_indices[:, 0], grid_indices[:, 1], grid_indices[:, 2], :] = allocated_map[:, 3:]
+        return local_map, local_min_bound, local_max_bound, inside_mask
+
+    # Uses saved weights instead of generating a filter
+    def update_map(self, semantic_preds):
+        semantic_preds = semantic_preds.to(self.dtype)
+        local_map, local_min_bound, local_max_bound, inside_mask = self.get_local_map()
 
         # Rotate the point cloud and translate to global frame
         global_pose = torch.from_numpy(self.global_pose).to(self.device)
         semantic_preds[:, :3] = torch.matmul(global_pose[:3, :3], semantic_preds[:, :3].T).T + global_pose[:3, 3]
 
         # Change to indices using our global frame bounds
-        grid_pc = self.grid_ind(semantic_preds, min_bound=local_min_bound, max_bound=local_max_bound).to(torch.long)
+        grid_pc = self.grid_ind(semantic_preds, min_bound=local_min_bound, max_bound=local_max_bound)
 
         # Update local map
         update = torch.zeros_like(local_map, requires_grad=False)
 
-        unique_inds, counts = torch.unique(grid_pc, return_counts=True, dim=0)
-        counts = counts.type(torch.long)
+        continuous = False
+        N, C = semantic_preds.shape
+        if C == self.num_classes + 3:
+            continuous = True
 
-        grid_indices = [unique_inds[:, i] for i in range(grid_pc.shape[1])]
-        update[grid_indices] = update[grid_indices] + counts
+        update = self.add_to_update(update, grid_pc, continuous)
 
         # Apply BKI filters
         update = torch.unsqueeze(update.permute(3, 0, 1, 2), 0)
@@ -162,3 +173,34 @@ class GlobalMap(ConvBKI):
         voxel_sizes = self.voxel_sizes.detach().cpu().numpy()
         self.voxel_translation = np.round(relative_translation / voxel_sizes) * voxel_sizes
         self.nearest_voxel = self.initial_pose[:3, 3] + self.voxel_translation
+
+    # Predict labels for points after propagating pose
+    def label_points(self, points):
+        points = torch.from_numpy(points).to(self.device)
+        global_pose = torch.from_numpy(self.global_pose).to(self.device)
+        points = torch.matmul(global_pose[:3, :3], points.T).T + global_pose[:3, 3]
+        labels = torch.zeros((points.shape[0], self.num_classes), dtype=torch.float32, device=self.device)
+
+        local_map, local_min_bound, local_max_bound, __ = self.get_local_map()
+
+        local_mask = torch.all((points < local_max_bound) & (points >= local_min_bound), dim=1)
+
+        local_points = points[local_mask]
+
+        grid_inds = torch.floor((local_points - local_min_bound) / self.voxel_sizes)
+        maxes = (self.grid_size - 1).view(1, 3)
+        clipped_inds = torch.clamp(grid_inds, torch.zeros_like(maxes), maxes).to(torch.long)
+
+        labels[local_mask, :] = local_map[clipped_inds[:, 0], clipped_inds[:, 1], clipped_inds[:, 2], :]
+        labels[~local_mask, :] = self.prior
+
+        # TODO: Add some sort of thresholding based on variance
+        # TODO: Add calculation of expectation, variance
+        predictions = torch.argmax(labels, dim=1)
+        predictions[~local_mask] = 0
+        return predictions, local_mask
+
+
+
+
+

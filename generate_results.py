@@ -27,7 +27,8 @@ from Data.Rellis3D import Rellis3dDataset
 from Models.mapping_utils import *
 from Data.SemanticKitti import KittiDataset
 
-MODEL_NAME = "ConvBKI_PerClass_Compound"
+MODEL_NAME = "ConvBKI_Single"
+print("Model is:", MODEL_NAME)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print("device is ", device)
@@ -53,6 +54,9 @@ LOAD_EPOCH = model_params["load_epoch"]
 LOAD_DIR = model_params["save_dir"]
 VISUALIZE = model_params["visualize"]
 MEAS_RESULT = model_params["meas_result"]
+FROM_CONT = model_params["from_continuous"]
+TO_CONT = model_params["to_continuous"]
+PRED_PATH = model_params["pred_path"]
 
 # Data Parameters
 data_params_file = os.path.join(os.getcwd(), "Config", dataset + ".yaml")
@@ -72,10 +76,12 @@ if dataset == "rellis":
 elif dataset == "semantic_kitti":
     if MEAS_RESULT:
         test_ds = KittiDataset(model_params["test"]["grid_params"], directory=DATA_DIR, device=device,
-                               num_frames=NUM_FRAMES, remap=True, use_aug=False, data_split=model_params["result_split"])
+                               num_frames=NUM_FRAMES, remap=True, use_aug=False, data_split=model_params["result_split"],
+                               from_continuous=FROM_CONT, to_continuous=TO_CONT, pred_path=PRED_PATH)
     else:
         test_ds = KittiDataset(model_params["test"]["grid_params"], directory=DATA_DIR, device=device,
-                               num_frames=NUM_FRAMES, remap=True, use_aug=False, data_split="test")
+                               num_frames=NUM_FRAMES, remap=True, use_aug=False, data_split="test",
+                               from_continuous=FROM_CONT, to_continuous=TO_CONT, pred_path=PRED_PATH)
 dataloader_test = DataLoader(test_ds, batch_size=1, shuffle=False, collate_fn=test_ds.collate_fn, num_workers=NUM_WORKERS)
 
 
@@ -110,13 +116,15 @@ if VISUALIZE:
 # Iteratively loop through each scan
 current_scene = None
 current_frame_id = None
+total_class = torch.zeros(map_object.num_classes, device=device)
+total_int_bki = torch.zeros(map_object.num_classes, device=device)
+total_int_seg = torch.zeros(map_object.num_classes, device=device)
+total_un_bki = torch.zeros(map_object.num_classes, device=device)
+total_un_seg = torch.zeros(map_object.num_classes, device=device)
 for idx in range(len(test_ds)):
     with torch.no_grad():
         # Load data
-        if MEAS_RESULT:
-            pose, points, pred_labels, gt_labels, scene_id, frame_id = test_ds.get_test_item(idx, get_gt=True)
-        else:
-            pose, points, pred_labels, scene_id, frame_id = test_ds.get_test_item(idx)
+        pose, points, pred_labels, gt_labels, scene_id, frame_id = test_ds.get_test_item(idx, get_gt=MEAS_RESULT)
 
         # Reset if new subsequence
         if scene_id != current_scene or (frame_id - 1) != current_frame_id:
@@ -142,5 +150,28 @@ for idx in range(len(test_ds)):
                 exit("Publishing broke")
 
         if MEAS_RESULT:
+            predictions, local_mask = map_object.label_points(points)
+            pred_labels = torch.from_numpy(pred_labels).to(device)
+            if pred_labels.shape[1] > 1:
+                pred_labels = torch.argmax(pred_labels, dim=1)
+            else:
+                pred_labels = pred_labels.view(-1)
+            gt_labels = torch.from_numpy(gt_labels).to(device).view(-1)
+            # TODO: Mask here?
+            gt_labels[~local_mask] = 0
+            pred_labels[~local_mask] = 0
+            for i in range(1, map_object.num_classes):
+                gt_i = gt_labels == i
+                pred_bki_i = predictions == i
+                pred_seg_i = pred_labels == i
 
-            print(pred_labels.shape, gt_labels.shape)
+                total_class[i] += torch.sum(gt_i)
+                total_int_bki[i] += torch.sum(gt_i & pred_bki_i)
+                total_int_seg[i] += torch.sum(gt_i & pred_seg_i)
+                total_un_bki[i] += torch.sum(gt_i | pred_bki_i)
+                total_un_seg[i] += torch.sum(gt_i | pred_seg_i)
+
+            if idx % 100 == 0:
+                print(idx, len(test_ds))
+print("BKI:", total_int_bki / total_un_bki * 100)
+print("Seg:", total_int_seg / total_un_seg * 100)

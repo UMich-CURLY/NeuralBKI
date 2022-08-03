@@ -21,7 +21,7 @@ from Models.ConvBKI import *
 from Data.Rellis3D import Rellis3dDataset
 from Data.SemanticKitti import KittiDataset
 
-MODEL_NAME = "ConvBKI_PerClass_Compound_Cont"
+MODEL_NAME = "ConvBKI_Single"
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print("device is ", device)
@@ -191,9 +191,12 @@ def semantic_loop(dataloader, epoch, train_count=None, training=False):
         loss = criterion(torch.log(batch_preds), batch_gt.long())
 
         if training:
+            if model.compound:
+                print("Z:", model.ell_z)
+                print("H:", model.ell_h)
+            else:
+                print(model.ell)
             loss.backward()
-            print("H:", model.ell_h)
-            print("Z:", model.ell_z)
             optimizer.step()
 
         # Accuracy
@@ -246,9 +249,9 @@ for epoch in range(EPOCH_NUM):
         save_filter(model, os.path.join("Models", "Weights", SAVE_NAME, "filters" + str(epoch) + ".pt"))
 
     # Validation
-    # model.eval()
-    # with torch.no_grad():
-    #     semantic_loop(dataloader_val, epoch, training=False)
+    model.eval()
+    with torch.no_grad():
+        semantic_loop(dataloader_val, epoch, training=False)
 
     # Training
     model.train()
