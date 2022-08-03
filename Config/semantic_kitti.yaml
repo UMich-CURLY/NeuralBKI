@@ -1,5 +1,6 @@
 num_classes: 20
-data_dir: "/home/tigeriv/Data/KITTI/dataset"
+# data_dir: "/home/tigeriv/Data/KITTI/dataset"
+data_dir: "/frog-drive/jingyuso/dataset/kitti"
 ignore_labels: = [0]
 
 # This file is covered by the LICENSE file in the root of this project.

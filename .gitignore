@@ -131,3 +131,6 @@ dmypy.json
 # Tensorflow event emitter
 events.out.*
 training_log.txt
+
+# Training weight
+*.pt
