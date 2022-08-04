@@ -1,15 +1,15 @@
-dataset: "semantic_kitti"
-save_dir: "ConvBKI_Cont_semantic_kitti"
+dataset: "kitti_odometry" #"semantic_kitti"
+save_dir: "ConvBKI_Cont_kitti_odometry" #"ConvBKI_Cont_semantic_kitti"
 load_epoch: 4
 map_method: "global"
 visualize: False
 meas_result: True
 result_split: "train"
-from_continuous: True
-to_continuous: True
+from_continuous: False
+to_continuous: False
 pred_path: "pred_probability"
 train:
-  B: 8
+  B: 2 #8
   num_epochs: 5
   lr: 0.05
   BETA1: 0.9
@@ -18,14 +18,14 @@ train:
   remove_last: True
   opt: "SGD"
   grid_params:
-    grid_size: [512.0, 512.0, 32.0]
-    min_bound: [-25.6, -25.6, -2.6]
-    max_bound: [25.6, 25.6, 0.6]
+    grid_size: [256.0, 256.0, 32.0] #[512.0, 512.0, 32.0]
+    min_bound: [0.0, -25.6, -2.0] #[-25.6, -25.6, -2.6]
+    max_bound: [51.2, 25.6, 4.4] #[25.6, 25.6, 0.6]
 test:
   grid_params:
-    grid_size: [1025.0, 1025.0, 33.0] #[512.0, 512.0, 32.0]
-    min_bound: [-51.25, -51.25, -2.65]
-    max_bound: [51.25, 51.25, 0.65]
+    grid_size: [256.0, 256.0, 32.0] #[1025.0, 1025.0, 33.0] #[512.0, 512.0, 32.0]
+    min_bound: [0.0, -25.6, -2.0] #[-51.25, -51.25, -2.65]
+    max_bound: [51.2, 25.6, 4.4] #[51.25, 51.25, 0.65]
 filter_size: 15
 kernel: "sparse"
 compound: True
@@ -33,7 +33,7 @@ per_class: True
 ell: 0.3
 seed: 42
 
-num_frames: 4
-num_workers: 16
+num_frames: 20 #4
+num_workers: 4 #16
 
 debug_mode: True
