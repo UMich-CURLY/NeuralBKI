@@ -4,10 +4,10 @@ load_epoch: 0
 map_method: "global"
 visualize: False
 meas_result: True
-result_split: "train"
-from_continuous: True
+result_split: "val"
+from_continuous: False
 to_continuous: False
-pred_path: "pred_probability"
+pred_path: "predictions_darknet"
 train:
   B: 8
   num_epochs: 5
@@ -26,7 +26,7 @@ test:
     grid_size: [1025.0, 1025.0, 33.0] #[512.0, 512.0, 32.0]
     min_bound: [-51.25, -51.25, -2.65]
     max_bound: [51.25, 51.25, 0.65]
-filter_size: 15
+filter_size: 9
 kernel: "sparse"
 compound: False
 per_class: False

@@ -173,5 +173,8 @@ for idx in range(len(test_ds)):
 
             if idx % 100 == 0:
                 print(idx, len(test_ds))
+                print("BKI:", total_int_bki / total_un_bki * 100)
+                print("Seg:", total_int_seg / total_un_seg * 100)
+print("Final results:")
 print("BKI:", total_int_bki / total_un_bki * 100)
 print("Seg:", total_int_seg / total_un_seg * 100)

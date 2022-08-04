@@ -5,28 +5,28 @@ map_method: "global"
 visualize: False
 meas_result: True
 result_split: "train"
-from_continuous: True
+from_continuous: False
 to_continuous: False
-pred_path: "pred_probability"
+pred_path: "predictions_darknet"
 train:
-  B: 8
+  B: 4
   num_epochs: 5
-  lr: 0.05
+  lr: 0.002
   BETA1: 0.9
   BETA2: 0.999
   decayRate: 0.96
   remove_last: True
-  opt: "SGD"
+  opt: "Adam"
   grid_params:
     grid_size: [512.0, 512.0, 32.0]
     min_bound: [-25.6, -25.6, -2.6]
     max_bound: [25.6, 25.6, 0.6]
 test:
   grid_params:
-    grid_size: [1025.0, 1025.0, 33.0] #[512.0, 512.0, 32.0]
+    grid_size: [1025.0, 1025.0, 33.0]
     min_bound: [-51.25, -51.25, -2.65]
     max_bound: [51.25, 51.25, 0.65]
-filter_size: 15
+filter_size: 9
 kernel: "sparse"
 compound: True
 per_class: True
@@ -36,4 +36,4 @@ seed: 42
 num_frames: 4
 num_workers: 16
 
-debug_mode: True
+debug_mode: False

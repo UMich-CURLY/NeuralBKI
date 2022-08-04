@@ -367,11 +367,10 @@ class KittiDataset(Dataset):
                 pred_labels = pred_labels[void_mask, :]
 
             if self.remap:
-                for i in range(pred_labels.shape[0]):
-                    if get_gt:
-                        gt_labels[i] = LABELS_REMAP[gt_labels[i]]
-                    if not self.from_continuous:
-                        pred_labels[i, :] = LABELS_REMAP[int(pred_labels[i, :])]
+                if get_gt:
+                    gt_labels = self._remap_lut[gt_labels].astype(np.uint8)
+                if not self.from_continuous:
+                    pred_labels = self._remap_lut[pred_labels].astype(np.uint8)
             scene_id = 0
 
             if get_gt:

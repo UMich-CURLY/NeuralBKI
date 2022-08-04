@@ -20,9 +20,8 @@ from Models.model_utils import *
 from Models.ConvBKI import *
 from Data.Rellis3D import Rellis3dDataset
 from Data.SemanticKitti import KittiDataset
-from Data.KittiOdometry import KittiOdomDataset
 
-MODEL_NAME = "ConvBKI_PerClass_Compound_Cont"
+MODEL_NAME = "ConvBKI_PerClass_Compound"
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print("device is ", device)
@@ -95,13 +94,6 @@ if dataset == "semantic_kitti":
     val_ds = KittiDataset(model_params["train"]["grid_params"], directory=TRAIN_DIR, device=device,
                           num_frames=NUM_FRAMES, remap=True, use_aug=False, data_split="val", from_continuous=FROM_CONT,
                           to_continuous=TO_CONT, pred_path=PRED_PATH)
-if dataset == "kitti_odometry":
-    train_ds = KittiOdomDataset(model_params["train"]["grid_params"], directory=TRAIN_DIR, device=device,
-                            num_frames=NUM_FRAMES, remap=False, use_aug=False, data_split="train", from_continuous=FROM_CONT,
-                            to_continuous=TO_CONT, num_classes=model_params["num_classes"])
-    val_ds = KittiOdomDataset(model_params["train"]["grid_params"], directory=TRAIN_DIR, device=device,
-                          num_frames=NUM_FRAMES, remap=False, use_aug=False, data_split="val", from_continuous=FROM_CONT,
-                          to_continuous=TO_CONT, num_classes=model_params["num_classes"])
 
 dataloader_train = DataLoader(train_ds, batch_size=B, shuffle=True, collate_fn=train_ds.collate_fn, num_workers=NUM_WORKERS)
 dataloader_val = DataLoader(val_ds, batch_size=B, shuffle=False, collate_fn=val_ds.collate_fn, num_workers=NUM_WORKERS)
@@ -172,7 +164,6 @@ def semantic_loop(dataloader, epoch, train_count=None, training=False):
 
             if DEBUG_MODE:
                 grid_params = model_params["test"]["grid_params"]
-                
                 colors = remap_colors(data_params["colors"])
                 if rospy.is_shutdown():
                     exit("Closing Python")
