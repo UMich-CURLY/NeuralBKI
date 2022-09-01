@@ -241,13 +241,13 @@ class KittiOdomDataset(Dataset):
                     labels = labels[grid_point_mask,:]
 
                     # Remove zero labels
-                    void_mask = temp_gt_labels != 0
-                    points = points[void_mask, :]
-                    temp_gt_labels = temp_gt_labels[void_mask]
-                    labels = labels[void_mask,:]
+                    # void_mask = temp_gt_labels != 0
+                    # points = points[void_mask, :]
+                    # temp_gt_labels = temp_gt_labels[void_mask]
+                    # labels = labels[void_mask,:]
 
                     # Remove ignored classes (sky, person, bicycle)
-                    ignored_classes = np.all((temp_gt_labels != 8, temp_gt_labels != 9, temp_gt_labels != 11), axis=0)
+                    ignored_classes = np.all((temp_gt_labels != 7, temp_gt_labels != 8, temp_gt_labels != 10), axis=0)
                     points = points[ignored_classes, :]
                     temp_gt_labels = temp_gt_labels[ignored_classes]
                     labels = labels[ignored_classes,:]
@@ -264,13 +264,13 @@ class KittiOdomDataset(Dataset):
                         labels_t = np.argmax(labels, axis=1).reshape((-1, 1)).astype(np.uint8)
                     else:
                         labels_t = labels
-                    void_mask = labels_t != 0
-                    void_mask = void_mask.squeeze()
-                    points = points[void_mask, :]
-                    labels = labels[void_mask, :]
+                    # void_mask = labels_t != 0
+                    # void_mask = void_mask.squeeze()
+                    # points = points[void_mask, :]
+                    # labels = labels[void_mask, :]
 
                     # Remove ignored classes (sky, person, bicycle)
-                    ignored_classes = np.all((labels_t != 8,labels_t != 9,labels_t != 11), axis=0).squeeze()
+                    ignored_classes = np.all((labels_t != 7,labels_t != 8,labels_t != 10), axis=0).squeeze()
                     
                     points = points[ignored_classes, :]
                     labels = labels[ignored_classes, :]
@@ -313,23 +313,25 @@ class KittiOdomDataset(Dataset):
 
     def get_test_item(self, idx, get_gt=False):
             frame_id = idx # Frame ID in current scene ID
-            global_pose = self.get_pose(frame_id)
+            idx_2 = int(self._frames_list_label[idx])
+            frame_id_2 = idx_2
+            global_pose = self.get_pose(frame_id_2)
             if frame_id > 0:
-                prior_pose = self.get_pose(frame_id - 1)
+                prior_pose = self.get_pose(frame_id_2 - 1)
             else: 
                 prior_pose = global_pose
             
-            points = np.fromfile(self._velodyne_list[frame_id], dtype=np.float32).reshape(-1, 4)[:, :3]
+            points = np.fromfile(self._velodyne_list[frame_id_2], dtype=np.float32).reshape(-1, 3)[:, :3]
             if get_gt:
                 gt_labels = np.fromfile(self._label_list[frame_id], dtype=np.uint8).reshape((-1))
             if self.from_continuous:
                 # pred_labels = np.fromfile(self._pred_list[frame_id], dtype=np.float32).reshape((-1, self.num_classes))
-                pred_labels = np.fromfile(self._pred_list[frame_id], dtype=np.uint8).reshape((-1, self.num_classes))
+                pred_labels = np.fromfile(self._pred_list[frame_id_2], dtype=np.uint8).reshape((-1, self.num_classes))
                 pred_labels = (pred_labels / 255).astype(np.float32)
                 if not self.to_continuous:
                     pred_labels = np.argmax(pred_labels, axis=1).reshape((-1, 1))
             else:
-                pred_labels = np.fromfile(self._pred_list[frame_id], dtype=np.uint8).reshape((-1, 1))
+                pred_labels = np.fromfile(self._pred_list[frame_id_2], dtype=np.uint8).reshape((-1, 1))
 
             # Filter points outside of voxel grid
             grid_point_mask = np.all( (points < self.max_bound) & (points >= self.min_bound), axis=1)
@@ -338,12 +340,19 @@ class KittiOdomDataset(Dataset):
                 gt_labels = gt_labels[grid_point_mask]
             pred_labels = pred_labels[grid_point_mask, :]
 
-            # Remove zero labels
-            if get_gt:
-                void_mask = gt_labels != 0
-                points = points[void_mask, :]
-                gt_labels = gt_labels[void_mask]
-                pred_labels = pred_labels[void_mask]
+            # Remove ignored classes (sky, person, bicycle)
+            ignored_classes = np.all((gt_labels != 7,gt_labels != 8,gt_labels != 10), axis=0).squeeze()
+            
+            points = points[ignored_classes, :]
+            pred_labels = pred_labels[ignored_classes, :]
+            gt_labels = gt_labels[ignored_classes]
+
+            # # Remove zero labels
+            # if get_gt:
+            #     void_mask = gt_labels != 0
+            #     points = points[void_mask, :]
+            #     gt_labels = gt_labels[void_mask]
+            #     pred_labels = pred_labels[void_mask, :]
 
 
             scene_id = 0

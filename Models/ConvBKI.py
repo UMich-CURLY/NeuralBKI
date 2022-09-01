@@ -61,12 +61,15 @@ class ConvBKI(torch.nn.Module):
                 if self.per_class:
                     self.ell_h = torch.nn.Parameter(torch.tensor([self.max_dist] * self.num_classes, device=self.device))
                     self.ell_z = torch.nn.Parameter(torch.tensor([self.max_dist] * self.num_classes, device=self.device))
+                    # self.ell_h = torch.nn.Parameter(0.2 + self.max_dist*torch.rand(self.num_classes, device=self.device))
+                    # self.ell_z = torch.nn.Parameter(0.2 + self.max_dist*torch.rand(self.num_classes, device=self.device))
                 else:
                     self.ell_h = torch.nn.Parameter(torch.tensor(self.max_dist, device=self.device, dtype=self.dtype))
                     self.ell_z = torch.nn.Parameter(torch.tensor(self.max_dist, device=self.device, dtype=self.dtype))
             else:
                 if self.per_class:
                     self.ell = torch.nn.Parameter(torch.tensor([self.max_dist] * self.num_classes, device=self.device))
+                    # self.ell = torch.nn.Parameter(2*self.max_dist*torch.rand(self.num_classes, device=self.device))
                 else:
                     self.ell = torch.nn.Parameter(torch.tensor(self.max_dist, device=self.device, dtype=self.dtype))
 

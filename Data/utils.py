@@ -106,7 +106,7 @@ def publish_local_map(labeled_grid, centroids, grid_params, colors, next_map):
     marker = Marker()
     marker.id = 0
     marker.ns = "Local Semantic Map"
-    marker.header.frame_id = "map" # change this to match model + scene name LMSC_000001
+    marker.header.frame_id = "map"
     marker.type = marker.CUBE_LIST
     marker.action = marker.ADD
     marker.lifetime.secs = 0

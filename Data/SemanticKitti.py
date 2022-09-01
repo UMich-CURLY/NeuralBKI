@@ -44,7 +44,8 @@ def grid_ind(input_pc, labels, min_bound, max_bound, grid_size, voxel_sizes):
 
 # TODO: Load this from YAML
 SPLIT_SEQUENCES = {
-    "train": ["00", "01", "02", "03", "04", "05", "06", "07", "09", "10"],
+    # "train": ["00", "01", "02", "03", "04", "05", "06", "07", "09", "10"],
+    "train": ["08"],
     "val": ["08"],
     "test": ["11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21"]
 }
@@ -86,8 +87,10 @@ class KittiDataset(Dataset):
                 from_continuous=False,
                 to_continuous=False,
                 pred_path="predictions_darknet",
-                num_classes=20
+                num_classes=20,
+                remove_zero=False
                 ):
+        self.remove_zero = remove_zero
         self.from_continuous = from_continuous
         self.to_continuous = to_continuous
         self.use_aug = use_aug
@@ -129,12 +132,14 @@ class KittiDataset(Dataset):
         self._num_frames_scene = []
 
         self._seqs = SPLIT_SEQUENCES[self.split]
+        self._scene_id = []
 
         for seq in self._seqs:
             velodyne_dir = os.path.join(self._directory, seq, 'velodyne')
             label_dir = os.path.join(self._directory, seq, 'labels')
             preds_dir = os.path.join(self._directory, seq, pred_path)
             self._num_frames_scene.append(len(os.listdir(velodyne_dir)))
+            self._scene_id += [seq] * len(os.listdir(velodyne_dir))
             frames_list = [os.path.splitext(filename)[0] for filename in sorted(os.listdir(velodyne_dir))]
             
             pose = np.loadtxt(os.path.join(self._directory, seq, 'poses.txt'))
@@ -286,10 +291,11 @@ class KittiDataset(Dataset):
                 labels = labels[grid_point_mask, :]
 
                 # Remove zero labels
-                void_mask = temp_gt_labels != 0
-                points = points[void_mask, :]
-                temp_gt_labels = temp_gt_labels[void_mask]
-                labels = labels[void_mask, :]
+                if self.remove_zero:
+                    void_mask = temp_gt_labels != 0
+                    points = points[void_mask, :]
+                    temp_gt_labels = temp_gt_labels[void_mask]
+                    labels = labels[void_mask, :]
 
                 if self.remap:
                     temp_gt_labels = self._remap_lut[temp_gt_labels].astype(np.uint8)
@@ -352,15 +358,13 @@ class KittiDataset(Dataset):
                 if not self.to_continuous:
                     pred_labels = np.argmax(pred_labels, axis=1).reshape((-1, 1))
 
-            # Filter points outside of voxel grid
-            grid_point_mask = np.all( (points < self.max_bound) & (points >= self.min_bound), axis=1)
-            points = points[grid_point_mask, :]
-            if get_gt:
-                gt_labels = gt_labels[grid_point_mask]
-            pred_labels = pred_labels[grid_point_mask, :]
-
             # Remove zero labels
-            if get_gt:
+            if get_gt and self.remove_zero:
+                grid_point_mask = np.all((points < self.max_bound) & (points >= self.min_bound), axis=1)
+                points = points[grid_point_mask, :]
+                gt_labels = gt_labels[grid_point_mask]
+                pred_labels = pred_labels[grid_point_mask, :]
+
                 void_mask = gt_labels != 0
                 points = points[void_mask, :]
                 gt_labels = gt_labels[void_mask]
@@ -371,7 +375,7 @@ class KittiDataset(Dataset):
                     gt_labels = self._remap_lut[gt_labels].astype(np.uint8)
                 if not self.from_continuous:
                     pred_labels = self._remap_lut[pred_labels].astype(np.uint8)
-            scene_id = 0
+            scene_id = self._scene_id[idx]
 
             if get_gt:
                 return global_pose, points, pred_labels, gt_labels.astype(np.uint8).reshape(-1, 1), scene_id, frame_id

@@ -4,7 +4,6 @@ import torch.nn.functional as F
 import numpy as np
 import time
 from Models.ConvBKI import ConvBKI
-import spconv.pytorch as spconv
 
 # TODO: Trilinear interpolation
 
@@ -12,7 +11,7 @@ import spconv.pytorch as spconv
 # Voxels are stored in a matrix [X | Y | Z | C_0 | ... C_N] where C is semantic class
 class GlobalMap(ConvBKI):
     def __init__(self, grid_size, min_bound, max_bound, weights, filter_size, num_classes=21, prior=0.001, device="cpu",
-                 datatype=torch.float32, sparse=True):
+                 datatype=torch.float32, sparse=True, delete_time=10):
         super().__init__(grid_size, min_bound, max_bound, filter_size=filter_size,
                  num_classes=num_classes, prior=prior, device=device, datatype=datatype)
 
@@ -25,9 +24,11 @@ class GlobalMap(ConvBKI):
         self.ConvLayer.weight[:, :, :, :, :] = weights.detach()[:, :, :, :, :]
 
         self.ConvLayer.eval()
+        self.delete_time = delete_time
 
     def reset_grid(self):
         self.global_map = None
+        self.map_times = None
         self.initial_pose = None
         self.translation_discretized = np.zeros(3)
         self.points_rotation = torch.eye(3, dtype=self.dtype, device=self.device)
@@ -89,15 +90,29 @@ class GlobalMap(ConvBKI):
         updated_centroids = self.centroids[updated_cells, :] + torch.from_numpy(self.voxel_translation).to(self.device)
         local_values = local_map.view(-1, self.num_classes)[updated_cells]
         new_cells = torch.cat((updated_centroids, local_values), dim=1)
+        # Visited Times = 0
+        visited_times = torch.zeros(new_cells.shape[0], 1).detach().cpu().numpy()
         # If empty
         if self.global_map is None:
             self.global_map = new_cells.detach().cpu().numpy()
+            self.map_times = visited_times
         else:
             # Replace local cells
             outside_mask = ~ inside_mask
             # Add new cells
             self.global_map = np.vstack((self.global_map[outside_mask, :], new_cells.detach().cpu().numpy()))
+            self.map_times = np.vstack((self.map_times[outside_mask, :], visited_times))
+        # Garbage Collection
+        self.garbage_collection()
         return self.global_map
+
+    def garbage_collection(self):
+        self.map_times += 1
+        # Remove cells with T > self.delete_time
+        recent_mask = self.map_times < self.delete_time
+        recent_mask = np.squeeze(recent_mask)
+        self.map_times = self.map_times[recent_mask, :]
+        self.global_map = self.global_map[recent_mask, :]
 
     # Propagate map given a transformation matrix
     def propagate(self, pose):
@@ -137,8 +152,4 @@ class GlobalMap(ConvBKI):
         predictions = torch.argmax(labels, dim=1)
         predictions[~local_mask] = 0
         return predictions, local_mask
-
-
-
-
 

@@ -26,8 +26,12 @@ from Models.ConvBKI import *
 from Data.Rellis3D import Rellis3dDataset
 from Models.mapping_utils import *
 from Data.SemanticKitti import KittiDataset
+from Data.KittiOdometry import KittiOdomDataset
+import time
 
-MODEL_NAME = "ConvBKI_Single"
+# MODEL_NAME = "ConvBKI_PerClass_Compound"
+MODEL_NAME = "ConvBKI_PerClass_Compound_odom"
+
 print("Model is:", MODEL_NAME)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -54,6 +58,7 @@ LOAD_EPOCH = model_params["load_epoch"]
 LOAD_DIR = model_params["save_dir"]
 VISUALIZE = model_params["visualize"]
 MEAS_RESULT = model_params["meas_result"]
+GEN_PREDS = model_params["gen_preds"]
 FROM_CONT = model_params["from_continuous"]
 TO_CONT = model_params["to_continuous"]
 PRED_PATH = model_params["pred_path"]
@@ -82,6 +87,16 @@ elif dataset == "semantic_kitti":
         test_ds = KittiDataset(model_params["test"]["grid_params"], directory=DATA_DIR, device=device,
                                num_frames=NUM_FRAMES, remap=True, use_aug=False, data_split="test",
                                from_continuous=FROM_CONT, to_continuous=TO_CONT, pred_path=PRED_PATH)
+elif dataset == "kitti_odometry":
+    if MEAS_RESULT:
+        test_ds = KittiOdomDataset(model_params["train"]["grid_params"], directory=DATA_DIR, device=device,
+                                num_frames=NUM_FRAMES, remap=False, use_aug=False, data_split=model_params["result_split"], from_continuous=FROM_CONT,
+                                to_continuous=TO_CONT)
+    else:
+        test_ds = KittiOdomDataset(model_params["train"]["grid_params"], directory=DATA_DIR, device=device,
+                            num_frames=NUM_FRAMES, remap=False, use_aug=False, data_split=model_params["result_split"], from_continuous=FROM_CONT,
+                            to_continuous=TO_CONT)
+                            
 dataloader_test = DataLoader(test_ds, batch_size=1, shuffle=False, collate_fn=test_ds.collate_fn, num_workers=NUM_WORKERS)
 
 
@@ -113,29 +128,55 @@ if VISUALIZE:
     map_pub = rospy.Publisher('SemMap_global', MarkerArray, queue_size=10)
     next_map = MarkerArray()
 
+if GEN_PREDS:
+    if not os.path.exists(MODEL_NAME):
+        os.mkdir(MODEL_NAME)
+
 # Iteratively loop through each scan
 current_scene = None
 current_frame_id = None
+seq_dir = None
+frame_num = 0
 total_class = torch.zeros(map_object.num_classes, device=device)
 total_int_bki = torch.zeros(map_object.num_classes, device=device)
 total_int_seg = torch.zeros(map_object.num_classes, device=device)
 total_un_bki = torch.zeros(map_object.num_classes, device=device)
 total_un_seg = torch.zeros(map_object.num_classes, device=device)
+
+total_t = 0.0
 for idx in range(len(test_ds)):
     with torch.no_grad():
         # Load data
         pose, points, pred_labels, gt_labels, scene_id, frame_id = test_ds.get_test_item(idx, get_gt=MEAS_RESULT)
+        
+        if VISUALIZE and MEAS_RESULT:
+            not_void = (gt_labels != 0)[:, 0]
+            points = points[not_void, :]
+            pred_labels = pred_labels[not_void, :]
+            gt_labels = gt_labels[not_void, :]
+
+        if GEN_PREDS and seq_dir is None:
+            seq_dir = os.path.join(MODEL_NAME, "sequences", str(scene_id).zfill(2), "predictions")
 
         # Reset if new subsequence
         if scene_id != current_scene or (frame_id - 1) != current_frame_id:
+            print(scene_id, frame_id)
             map_object.reset_grid()
+            if GEN_PREDS:
+                seq_dir = os.path.join(MODEL_NAME, "sequences", str(scene_id).zfill(2), "predictions")
+                frame_num = 0
+                if not os.path.exists(seq_dir):
+                    os.makedirs(seq_dir)
         # Update pose if not
+        start_t = time.time()
         map_object.propagate(pose)
 
         # Add points to map
         labeled_pc = np.hstack((points, pred_labels))
         labeled_pc_torch = torch.from_numpy(labeled_pc).to(device=device)
         map_object.update_map(labeled_pc_torch)
+        total_t += time.time() - start_t
+        print(total_t/(frame_num+1))
 
         current_scene = scene_id
         current_frame_id = frame_id
@@ -144,12 +185,22 @@ for idx in range(len(test_ds)):
             if rospy.is_shutdown():
                 exit("Closing Python")
             try:
-                map = publish_voxels(map_object, grid_params['min_bound'], grid_params['max_bound'], grid_params['grid_size'], colors, next_map)
-                map_pub.publish(map)
+                if MAP_METHOD == "global" or MAP_METHOD == "local":
+                    map = publish_voxels(map_object, grid_params['min_bound'], grid_params['max_bound'], grid_params['grid_size'], colors, next_map)
+                    map_pub.publish(map)
+                elif MAP_METHOD == "local":
+                    map = publish_local_map(map_object.local_map, map_object.centroids, grid_params, colors, next_map)
+                    map_pub.publish(map)
             except:
                 exit("Publishing broke")
 
         if MEAS_RESULT:
+            # Filter out ignore labels
+            non_ignore_mask = (gt_labels != 0)[:, 0]
+            points = points[non_ignore_mask, :]
+            gt_labels = gt_labels[non_ignore_mask, :]
+            pred_labels = pred_labels[non_ignore_mask, :]
+            # Make predictions and measure
             predictions, local_mask = map_object.label_points(points)
             pred_labels = torch.from_numpy(pred_labels).to(device)
             if pred_labels.shape[1] > 1:
@@ -157,9 +208,13 @@ for idx in range(len(test_ds)):
             else:
                 pred_labels = pred_labels.view(-1)
             gt_labels = torch.from_numpy(gt_labels).to(device).view(-1)
-            # TODO: Mask here?
-            gt_labels[~local_mask] = 0
-            pred_labels[~local_mask] = 0
+            # TODO: Change this line if needed. Maps outside local mask to segmentation labels.
+            predictions_temp = pred_labels.detach().clone().to(predictions.dtype)
+            predictions_temp[local_mask] = predictions[local_mask]
+            predictions = predictions_temp
+            # gt_labels = gt_labels[local_mask]
+            # pred_labels = pred_labels[local_mask]
+            # predictions = predictions[local_mask]
             for i in range(1, map_object.num_classes):
                 gt_i = gt_labels == i
                 pred_bki_i = predictions == i
@@ -175,6 +230,31 @@ for idx in range(len(test_ds)):
                 print(idx, len(test_ds))
                 print("BKI:", total_int_bki / total_un_bki * 100)
                 print("Seg:", total_int_seg / total_un_seg * 100)
-print("Final results:")
-print("BKI:", total_int_bki / total_un_bki * 100)
-print("Seg:", total_int_seg / total_un_seg * 100)
+
+        if GEN_PREDS:
+            frame_file = os.path.join(seq_dir, str(frame_num).zfill(6) + ".label")
+            # Make predictions
+            predictions, local_mask = map_object.label_points(points)
+            pred_labels = torch.from_numpy(pred_labels).to(device)
+            if pred_labels.shape[1] > 1:
+                pred_labels = torch.argmax(pred_labels, dim=1)
+            else:
+                pred_labels = pred_labels.view(-1)
+            # Maps outside local mask to segmentation labels.
+            predictions_temp = pred_labels.detach().clone().to(predictions.dtype)
+            predictions_temp[local_mask] = predictions[local_mask]
+            predictions = predictions_temp.view(-1).detach().cpu().numpy().astype(np.uint32)
+            # Save
+            predictions.tofile(frame_file)
+
+    frame_num += 1
+
+
+if MEAS_RESULT:
+    print("Final results:")
+    print("Seg:")
+    for i in range(NUM_CLASSES):
+        print((total_int_seg[i] / total_un_seg[i] * 100).item())
+    print("BKI:")
+    for i in range(NUM_CLASSES):
+        print((total_int_bki[i] / total_un_bki[i] * 100).item())

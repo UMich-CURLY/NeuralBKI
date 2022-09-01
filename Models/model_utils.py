@@ -15,6 +15,26 @@ def setup_seed(seed=42):
     random.seed(seed)
 
 
+def measure_inf_time(model, inputs, reps=300):
+    print(inputs.shape)
+    starter, ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+    timings = np.zeros((reps, 1))
+    model.eval()
+    with torch.no_grad():
+        current_map = model.initialize_grid()
+        for rep in range(reps):
+            starter.record()
+            _ = model(current_map, inputs)
+            ender.record()
+            # WAIT FOR GPU SYNC
+            torch.cuda.synchronize()
+            curr_time = starter.elapsed_time(ender)
+            timings[rep] = curr_time
+    mean_syn = np.sum(timings) / reps
+    std_syn = np.std(timings)
+    print(mean_syn)
+
+
 def get_model(model_name, model_params):
     # Model parameters
     grid_params = model_params["train"]["grid_params"]

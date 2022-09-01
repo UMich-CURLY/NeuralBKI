@@ -20,14 +20,15 @@ from Models.model_utils import *
 from Models.ConvBKI import *
 from Data.Rellis3D import Rellis3dDataset
 from Data.SemanticKitti import KittiDataset
+from Data.KittiOdometry import KittiOdomDataset
 
 MODEL_NAME = "ConvBKI_PerClass_Compound"
-
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print("device is ", device)
 print("Model is", MODEL_NAME)
 
 model_params_file = os.path.join(os.getcwd(), "Config", MODEL_NAME + ".yaml")
+
 with open(model_params_file, "r") as stream:
     try:
         model_params = yaml.safe_load(stream)
@@ -63,9 +64,11 @@ with open(data_params_file, "r") as stream:
         print(exc)
 
 epsilon_w = 1e-5  # eps to avoid zero division
-weights = torch.from_numpy( (1 / np.log(class_frequencies + epsilon_w) )).to(dtype=FLOAT_TYPE, device=device)
-
-criterion = nn.NLLLoss(weight=weights)
+# TODO: Try counting for seq 4, ablation studies on seq 4
+weights = np.zeros(class_frequencies.shape)
+weights[1:] = (1 / np.log(class_frequencies[1:] + epsilon_w) )
+weights = torch.from_numpy(weights).to(dtype=FLOAT_TYPE, device=device)
+criterion = nn.NLLLoss(weight=weights, ignore_index=0)
 # pdb.set_trace()
 scenes = [ s for s in sorted(os.listdir(TRAIN_DIR)) if s.isdigit() ]
 
@@ -94,6 +97,13 @@ if dataset == "semantic_kitti":
     val_ds = KittiDataset(model_params["train"]["grid_params"], directory=TRAIN_DIR, device=device,
                           num_frames=NUM_FRAMES, remap=True, use_aug=False, data_split="val", from_continuous=FROM_CONT,
                           to_continuous=TO_CONT, pred_path=PRED_PATH)
+if dataset == "kitti_odometry":
+    train_ds = KittiOdomDataset(model_params["train"]["grid_params"], directory=TRAIN_DIR, device=device,
+                            num_frames=NUM_FRAMES, remap=False, use_aug=False, data_split="train", from_continuous=FROM_CONT,
+                            to_continuous=TO_CONT, num_classes=model_params["num_classes"])
+    val_ds = KittiOdomDataset(model_params["train"]["grid_params"], directory=TRAIN_DIR, device=device,
+                          num_frames=NUM_FRAMES, remap=False, use_aug=False, data_split="val", from_continuous=FROM_CONT,
+                          to_continuous=TO_CONT, num_classes=model_params["num_classes"])
 
 dataloader_train = DataLoader(train_ds, batch_size=B, shuffle=True, collate_fn=train_ds.collate_fn, num_workers=NUM_WORKERS)
 dataloader_val = DataLoader(val_ds, batch_size=B, shuffle=False, collate_fn=val_ds.collate_fn, num_workers=NUM_WORKERS)
@@ -159,6 +169,7 @@ def semantic_loop(dataloader, epoch, train_count=None, training=False):
                 exit()
 
             labeled_pc_torch = torch.from_numpy(labeled_pc).to(device=device)
+            measure_inf_time(model, labeled_pc_torch)
             preds = model(current_map, labeled_pc_torch)
             gt_sem_labels = torch.from_numpy(gt_labels[b]).to(device=device)
 
@@ -188,6 +199,10 @@ def semantic_loop(dataloader, epoch, train_count=None, training=False):
             batch_preds = torch.vstack((batch_preds, sem_preds[non_void_mask, :]))
 
         batch_gt = batch_gt.reshape(-1)
+        # Remove ignore labels
+        not_ignore_mask = batch_gt != 0
+        batch_preds = batch_preds[not_ignore_mask, :]
+        batch_gt = batch_gt[not_ignore_mask]
         loss = criterion(torch.log(batch_preds), batch_gt.long())
 
         if training:
@@ -257,5 +272,12 @@ for epoch in range(EPOCH_NUM):
     model.train()
     idx = 0
     model, train_count = semantic_loop(dataloader_train, epoch, train_count=train_count, training=True)
+
+# Validation
+epoch = EPOCH_NUM
+model.eval()
+with torch.no_grad():
+    semantic_loop(dataloader_val, epoch, training=False)
+save_filter(model, os.path.join("Models", "Weights", SAVE_NAME, "filters" + str(epoch) + ".pt"))
 
 writer.close()

@@ -1,39 +1,40 @@
 dataset: "semantic_kitti"
-save_dir: "ConvBKI_Single_semantic_kitti"
+save_dir: "ConvBKI_SIN_02_V"
 load_epoch: 0
 map_method: "global"
 visualize: False
 meas_result: True
-result_split: "val"
+gen_preds: False
+result_split: "train"
 from_continuous: False
 to_continuous: False
 pred_path: "predictions_darknet"
 train:
-  B: 8
+  B: 4
   num_epochs: 5
-  lr: 0.05
+  lr: 0.007
   BETA1: 0.9
   BETA2: 0.999
   decayRate: 0.96
-  remove_last: True
-  opt: "SGD"
+  remove_last: False
+  opt: "Adam"
   grid_params:
-    grid_size: [512.0, 512.0, 32.0]
-    min_bound: [-25.6, -25.6, -2.6]
-    max_bound: [25.6, 25.6, 0.6]
+    grid_size: [ 400.0, 400.0, 26.0 ]
+    min_bound: [ -40.0, -40.0, -2.6 ]
+    max_bound: [ 40.0, 40.0, 2.6 ]
 test:
   grid_params:
-    grid_size: [1025.0, 1025.0, 33.0] #[512.0, 512.0, 32.0]
-    min_bound: [-51.25, -51.25, -2.65]
-    max_bound: [51.25, 51.25, 0.65]
-filter_size: 9
+    grid_size: [501.0, 501.0, 27.0]
+    min_bound: [-50.1, -50.1, -2.7]
+    max_bound: [50.1, 50.1, 2.7]
+filter_size: 5
 kernel: "sparse"
 compound: False
 per_class: False
-ell: 0.3
+ell: 0.5
 seed: 42
 
-num_frames: 4
-num_workers: 16
+num_frames: 10
+num_workers: 10
 
 debug_mode: False
