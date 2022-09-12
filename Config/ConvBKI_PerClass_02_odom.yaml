@@ -1,0 +1,40 @@
+dataset: "kitti_odometry"
+save_dir: "ConvBKI_PC_02_Odom"
+load_epoch: 1
+map_method: "global"
+visualize: False
+meas_result: True
+gen_preds: False
+result_split: "test"
+from_continuous: False
+to_continuous: False
+pred_path: "pred_probability"
+train:
+  B: 4
+  num_epochs: 3 
+  lr: 0.007
+  BETA1: 0.9 
+  BETA2: 0.999
+  decayRate: 0.96
+  remove_last: False
+  opt: "Adam" 
+  grid_params:
+    grid_size: [400.0, 400.0, 50.0]
+    min_bound: [-40.0, -40.0, -5.0] #[-40.0, -40.0, -2.65]
+    max_bound: [40.0, 40.0, 5.0] #[40.0, 40.0, 3.75]
+test:
+  grid_params:
+    grid_size: [401.0, 401.0, 51.0] #[512.0, 512.0, 32.0]
+    min_bound: [-40.1, -40.1, -5.1]
+    max_bound: [40.1, 40.1, 5.1]
+filter_size: 5
+kernel: "sparse"
+compound: False
+per_class: True
+ell: 0.5 
+seed: 42
+
+num_frames: 10
+num_workers: 10
+
+debug_mode: False

@@ -1,6 +1,6 @@
 num_classes: 20
 data_dir: "/home/jason/Data/kitti"
-ignore_labels: = [0]
+ignore_labels: [0]
 
 # This file is covered by the LICENSE file in the root of this project.
 labels: 

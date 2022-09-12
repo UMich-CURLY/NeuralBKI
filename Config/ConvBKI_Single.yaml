@@ -1,11 +1,11 @@
 dataset: "semantic_kitti"
 save_dir: "ConvBKI_SIN_02_V"
-load_epoch: 0
+load_epoch: 1
 map_method: "global"
 visualize: False
 meas_result: True
 gen_preds: False
-result_split: "train"
+result_split: "val"
 from_continuous: False
 to_continuous: False
 pred_path: "predictions_darknet"

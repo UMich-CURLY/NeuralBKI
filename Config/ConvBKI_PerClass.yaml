@@ -5,7 +5,7 @@ map_method: "global"
 visualize: False
 meas_result: True
 gen_preds: False
-result_split: "train"
+result_split: "val"
 from_continuous: False
 to_continuous: False
 pred_path: "predictions_darknet"

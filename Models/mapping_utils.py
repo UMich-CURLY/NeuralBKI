@@ -10,11 +10,11 @@ from Models.ConvBKI import ConvBKI
 # Save grid in CPU memory, load to GPU when needed for update step
 # Voxels are stored in a matrix [X | Y | Z | C_0 | ... C_N] where C is semantic class
 class GlobalMap(ConvBKI):
-    def __init__(self, grid_size, min_bound, max_bound, weights, filter_size, num_classes=21, prior=0.001, device="cpu",
+    def __init__(self, grid_size, min_bound, max_bound, weights, filter_size, num_classes=21, ignore_labels = None, prior=0.001, device="cpu",
                  datatype=torch.float32, sparse=True, delete_time=10):
         super().__init__(grid_size, min_bound, max_bound, filter_size=filter_size,
                  num_classes=num_classes, prior=prior, device=device, datatype=datatype)
-
+        self.ignore_labels = ignore_labels
         self.weights = weights
         self.reset_grid()
 
@@ -150,6 +150,7 @@ class GlobalMap(ConvBKI):
         # TODO: Add some sort of thresholding based on variance
         # TODO: Add calculation of expectation, variance
         predictions = torch.argmax(labels, dim=1)
-        predictions[~local_mask] = 0
+        predictions[~local_mask] = self.ignore_labels[0]
+
         return predictions, local_mask
 

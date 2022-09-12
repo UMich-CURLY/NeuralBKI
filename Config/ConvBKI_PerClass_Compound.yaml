@@ -2,8 +2,8 @@ dataset: "semantic_kitti"
 save_dir: "ConvBKI_COM_02_V"
 load_epoch: 1
 map_method: "global"
-visualize: True
-meas_result: False
+visualize: False
+meas_result: True
 gen_preds: False
 result_split: "val"
 from_continuous: False
