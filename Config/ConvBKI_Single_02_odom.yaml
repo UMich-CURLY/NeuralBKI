@@ -1,6 +1,6 @@
 dataset: "kitti_odometry"
 save_dir: "ConvBKI_Sin_02_Odom"
-load_epoch: 0
+load_epoch: 1
 map_method: "global"
 visualize: False
 meas_result: True

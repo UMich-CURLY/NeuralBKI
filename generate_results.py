@@ -29,8 +29,8 @@ from Data.SemanticKitti import KittiDataset
 from Data.KittiOdometry import KittiOdomDataset
 import time
 
-MODEL_NAME = "ConvBKI_PerClass_Compound"
-# MODEL_NAME = "ConvBKI_PerClass_02_odom"
+# MODEL_NAME = "ConvBKI_Single"
+MODEL_NAME = "ConvBKI_Single_02_odom"
 
 print("Model is:", MODEL_NAME)
 
