@@ -78,6 +78,13 @@ conda activate NeuralBKI
  <img width="600" alt="Diagram" src="https://user-images.githubusercontent.com/91337470/191287635-10ff78ce-c8ae-4044-a241-c1db252801d8.png">
 </p>
 
+## Acknowledgement
+We utilize data and code from: 
+- [1] [Kitti Odometry](https://www.cvlibs.net/datasets/kitti/eval_odometry.php)
+- [2] [SemanticKITTI](http://www.semantic-kitti.org/)
+
+
+
 
 
 
