@@ -40,7 +40,7 @@ conda activate NeuralBKI
   * You can download the SemanticKitti [ground turth](http://www.semantic-kitti.org/dataset.html#download) and the semantic segmentation output from [darknet53 with KNN](http://www.ipb.uni-bonn.de/html/projects/bonnetal/lidar/semantic/predictions/darknet53-knn.tar.gz)
 
 ## Results
-* Quantitive
+
 #### KittiOdometry
 | Method      | Building | Road | Vege. | Sidewalk | Car | Sign | Fence | Pole | Average |
 |-------------------|------|------|------|------|------|------|------|------|------|
@@ -67,7 +67,17 @@ conda activate NeuralBKI
 |   | S-BKI        | 83.8 | 30.6 | 43.0 | 26.0 | 19.6 | 8.5  | 3.4  | 0.0 | 92.6 | 65.3 | 77.4 | 30.1 | 89.7 | 63.7 | 83.4 | 64.3 | 67.4 | 58.6 | 67.1 | 51.3 |
 |   | ConvBKI Com. | 83.8 | 32.2 | 43.8 | 29.8 | 23.2 | 8.3  | 3.1  | 0.0 | 91.4 | 62.6 | 75.2 | 27.5 | 89.1 | 61.6 | 81.6 | 62.5 | 65.2 | 53.9 | 63.0 | 50.4 |
 
-* Qualitative 
+#### Qualitative 
+* Example map produced by ConvBKI Compound on the validation set of Semantic KITTI. It can be seen that filtering out voxels with high variance improves the quality of the robotic map. 
+<p align="center">
+ <img width="600" alt="Diagram" src="https://user-images.githubusercontent.com/91337470/191287167-dd1e67c5-2f0c-4bba-bd2a-d7f47e2aedaa.png">
+</p>
+
+* Illustration of kernels learned by ConvBKI on the road and pole semantic classes
+<p align="center">
+ <img width="600" alt="Diagram" src="https://user-images.githubusercontent.com/91337470/191287635-10ff78ce-c8ae-4044-a241-c1db252801d8.png">
+</p>
+
 
 
 
