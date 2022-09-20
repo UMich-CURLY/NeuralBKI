@@ -38,6 +38,23 @@ conda activate NeuralBKI
   * You can download the preprocessed data here.
 * SemanticKitti
   * You can download the SemanticKitti [ground turth](http://www.semantic-kitti.org/dataset.html#download) and the semantic segmentation output from [darknet53 with KNN](http://www.ipb.uni-bonn.de/html/projects/bonnetal/lidar/semantic/predictions/darknet53-knn.tar.gz)
+  
+### Training Model
+* Create/Modify yaml file in Config directory (Format should follows the provided ones)
+* Change MODEL_NAME parameter to the name of the correct yaml file in train.py
+* Run train.py
+
+### Testing Model
+* Change MODEL_NAME parameter to the name of the correct yaml file in geberate result.py
+* Run generate_results.py
+
+### YAML Parameters
+* dataset - the name of the dataset yaml file
+* save_dir - location where the filter weights are saved
+* load_epoch - which filter weights to load during mapping
+* visualize - whether to publish to rviz 
+* meas_result - whether to generate result
+* gen_preds - whether to save the map
 
 ## Results
 
