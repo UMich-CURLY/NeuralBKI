@@ -22,7 +22,7 @@ Welcome! This repository contains all software used to create the Bayesian Kerne
 </p>
 
 ## Use NeuralBKI
-### Dependencies
+#### Dependencies
 * [Pytorch](https://pytorch.org/get-started/locally/) - we tested on PyTorch 1.10 and 1.8.2
 * [ROS](http://wiki.ros.org/noetic) - we used ros noetic for map visualization  
 
@@ -32,23 +32,23 @@ conda env create -f environment.yml
 conda activate NeuralBKI
 ```
 
-### Datasets
+#### Datasets
 * KittiOdometry 
   * We preprocessed the Kitti Odometry following [Yang et al.](https://github.com/shichaoy/semantic_3d_mapping/tree/master/preprocess_data#readme). We use [ELAS](https://www.cvlibs.net/software/libelas/) to generated depth images from Kitti Odometry dataset's stereo images. The semantic segmentation of the images are from a [Dilation Network](https://github.com/fyu/dilation). Then using the depth images and semantic segmentation, 3D point clouds can be generated from the image projections.
   * You can download the preprocessed data here.
 * SemanticKitti
   * You can download the SemanticKitti [ground turth](http://www.semantic-kitti.org/dataset.html#download) and the semantic segmentation output from [darknet53 with KNN](http://www.ipb.uni-bonn.de/html/projects/bonnetal/lidar/semantic/predictions/darknet53-knn.tar.gz)
   
-### Training Model
+#### Training Model
 * Create/Modify yaml file in Config directory (Format should follows the provided ones)
 * Change MODEL_NAME parameter to the name of the correct yaml file in train.py
 * Run train.py
 
-### Testing Model
+#### Testing Model
 * Change MODEL_NAME parameter to the name of the correct yaml file in geberate result.py
 * Run generate_results.py
 
-### YAML Parameters
+#### YAML Parameters
 * dataset - the name of the dataset yaml file
 * save_dir - location where the filter weights are saved
 * load_epoch - which filter weights to load during mapping
