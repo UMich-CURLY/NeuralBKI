@@ -18,7 +18,7 @@ Welcome! This repository contains all software used to create the Bayesian Kerne
 
 ## Network: **NeuralBKI**
 <p align="center">
- <img width="674" alt="Diagram" src="https://user-images.githubusercontent.com/91337470/191112305-26045690-65a1-47ae-a769-9d65e5877cd1.png">
+ <img width="600" alt="Diagram" src="https://user-images.githubusercontent.com/91337470/191112305-26045690-65a1-47ae-a769-9d65e5877cd1.png">
 </p>
 
 ## Use NeuralBKI
