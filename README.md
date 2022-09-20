@@ -82,7 +82,30 @@ conda activate NeuralBKI
 We utilize data and code from: 
 - [1] [Kitti Odometry](https://www.cvlibs.net/datasets/kitti/eval_odometry.php)
 - [2] [SemanticKITTI](http://www.semantic-kitti.org/)
+- [3] [ELAS](https://www.cvlibs.net/software/libelas/)
+- [4] [Dilation Network](https://github.com/fyu/dilation)
+- [5] [darknet53 with KNN](https://github.com/PRBonn/lidar-bonnetal)
 
+## Reference
+If you find our work useful in your research work, consider citing [our paper]
+```
+```
+Bayesian Spatial Kernel Smoothing for Scalable Dense Semantic Mapping (PDF)[https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=8954837]
+```
+@ARTICLE{gan2019bayesian,
+author={L. {Gan} and R. {Zhang} and J. W. {Grizzle} and R. M. {Eustice} and M. {Ghaffari}},
+journal={IEEE Robotics and Automation Letters},
+title={Bayesian Spatial Kernel Smoothing for Scalable Dense Semantic Mapping},
+year={2020},
+volume={5},
+number={2},
+pages={790-797},
+keywords={Mapping;semantic scene understanding;range sensing;RGB-D perception},
+doi={10.1109/LRA.2020.2965390},
+ISSN={2377-3774},
+month={April},}
+
+```
 
 
 
