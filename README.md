@@ -19,3 +19,22 @@ Welcome! This repository contains all software used to create the Bayesian Kerne
 <p align="center">
  <img width="674" alt="Diagram" src="https://user-images.githubusercontent.com/91337470/191112305-26045690-65a1-47ae-a769-9d65e5877cd1.png">
 </p>
+
+## Use NeuralBKI
+### Dependencies
+* [Pytorch](https://pytorch.org/get-started/locally/) - we tested on PyTorch 1.10 and 1.8.2
+* [ROS](http://wiki.ros.org/noetic) - we used ros noetic for map visualization  
+
+We also provide an environment.yml which you can use to create a conda environment
+```
+conda env create -f environment.yml
+conda activate NeuralBKI
+```
+### Datasets
+* KittiOdometry 
+** We preprocessed the Kitti Odometry following [Yang et al.](https://github.com/shichaoy/semantic_3d_mapping/tree/master/preprocess_data#readme). We use [ELAS](https://www.cvlibs.net/software/libelas/) to generated depth images from Kitti Odometry dataset's stereo images. The semantic segmentation of the images are from a [Dilation Network](https://github.com/fyu/dilation). Then using the depth images and semantic segmentation, 3D point clouds can be generated from the image projections.
+** You can download the preprocessed data here.
+
+* SemanticKitti
+
+
