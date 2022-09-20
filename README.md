@@ -1,8 +1,6 @@
 # NeuralBKI
 Welcome! This repository contains all software used to create the Bayesian Kernel Inference Neural Network.
-<p align="center">
  ![icra2](https://user-images.githubusercontent.com/91337470/191110565-cc98d66e-43a9-4b8e-8b63-e657fd899a1f.gif)
-</p>
 
 ## Table of Contents
  - [Network](#network)
@@ -32,9 +30,9 @@ conda activate NeuralBKI
 ```
 ### Datasets
 * KittiOdometry 
- * We preprocessed the Kitti Odometry following [Yang et al.](https://github.com/shichaoy/semantic_3d_mapping/tree/master/preprocess_data#readme). We use [ELAS](https://www.cvlibs.net/software/libelas/) to generated depth images from Kitti Odometry dataset's stereo images. The semantic segmentation of the images are from a [Dilation Network](https://github.com/fyu/dilation). Then using the depth images and semantic segmentation, 3D point clouds can be generated from the image projections.
- * You can download the preprocessed data here.
+  * We preprocessed the Kitti Odometry following [Yang et al.](https://github.com/shichaoy/semantic_3d_mapping/tree/master/preprocess_data#readme). We use [ELAS](https://www.cvlibs.net/software/libelas/) to generated depth images from Kitti Odometry dataset's stereo images. The semantic segmentation of the images are from a [Dilation Network](https://github.com/fyu/dilation). Then using the depth images and semantic segmentation, 3D point clouds can be generated from the image projections.
+  * You can download the preprocessed data here.
 * SemanticKitti
- * You can download the SemanticKitti [ground turth](http://www.semantic-kitti.org/dataset.html#download) and the semantic segmentation output from [darknet53 with KNN](http://www.ipb.uni-bonn.de/html/projects/bonnetal/lidar/semantic/predictions/darknet53-knn.tar.gz)
+  * You can download the SemanticKitti [ground turth](http://www.semantic-kitti.org/dataset.html#download) and the semantic segmentation output from [darknet53 with KNN](http://www.ipb.uni-bonn.de/html/projects/bonnetal/lidar/semantic/predictions/darknet53-knn.tar.gz)
 
 
