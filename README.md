@@ -40,6 +40,7 @@ conda activate NeuralBKI
   * You can download the SemanticKitti [ground turth](http://www.semantic-kitti.org/dataset.html#download) and the semantic segmentation output from [darknet53 with KNN](http://www.ipb.uni-bonn.de/html/projects/bonnetal/lidar/semantic/predictions/darknet53-knn.tar.gz)
 
 ## Results
+* Quantitive
 #### KittiOdometry
 | Method      | Building | Road | Vege. | Sidewalk | Car | Sign | Fence | Pole | Average |
 |-------------------|------|------|------|------|------|------|------|------|------|
@@ -65,6 +66,8 @@ conda activate NeuralBKI
 | Test | Da.-kNN      | 82.4 | 26.0 | 34.6 | 21.6 | 18.3 | 6.7  | 2.7  | 0.5 | 91.8 | 65.0 | 75.1 | 27.7 | 87.4 | 58.6 | 80.5 | 55.1 | 64.8 | 47.9 | 55.9 | 47.5 |
 |   | S-BKI        | 83.8 | 30.6 | 43.0 | 26.0 | 19.6 | 8.5  | 3.4  | 0.0 | 92.6 | 65.3 | 77.4 | 30.1 | 89.7 | 63.7 | 83.4 | 64.3 | 67.4 | 58.6 | 67.1 | 51.3 |
 |   | ConvBKI Com. | 83.8 | 32.2 | 43.8 | 29.8 | 23.2 | 8.3  | 3.1  | 0.0 | 91.4 | 62.6 | 75.2 | 27.5 | 89.1 | 61.6 | 81.6 | 62.5 | 65.2 | 53.9 | 63.0 | 50.4 |
+
+* Qualitative 
 
 
 
