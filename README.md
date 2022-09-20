@@ -1,6 +1,9 @@
 # NeuralBKI
 Welcome! This repository contains all software used to create the Bayesian Kernel Inference Neural Network.
- ![icra2](https://user-images.githubusercontent.com/91337470/191110565-cc98d66e-43a9-4b8e-8b63-e657fd899a1f.gif)
+<p align="center">
+ <img width="800" src="https://user-images.githubusercontent.com/91337470/191110565-cc98d66e-43a9-4b8e-8b63-e657fd899a1f.gif">
+</p>
+
 
 ## Table of Contents
  - [Network](#network)
