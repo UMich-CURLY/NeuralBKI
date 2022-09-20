@@ -42,6 +42,7 @@ conda activate NeuralBKI
 ## Results
 #### KittiOdometry
 | Method      | Building | Road | Vege. | Sidewalk | Car | Sign | Fence | Pole | Average |
+|-------------------|------|------|------|------|------|------|------|------|------|
 | Segmentation      | 92.1 | 93.9 | 90.7 | 81.9 | 94.6 | 19.8 | 78.9 | 49.3 | 75.1 |
 | Yang et al.       | 95.6 | 90.4 | 92.8 | 70.0 | 94.4 | 0.1  | 84.5 | 49.5 | 72.2 |
 | BGKOctoMap-CRF    | 94.7 | 93.8 | 90.2 | 81.1 | 92.9 | 0.0  | 78.0 | 49.7 | 72.5 |
