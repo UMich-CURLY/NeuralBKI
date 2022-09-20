@@ -90,7 +90,7 @@ We utilize data and code from:
 If you find our work useful in your research work, consider citing [our paper]
 ```
 ```
-Bayesian Spatial Kernel Smoothing for Scalable Dense Semantic Mapping [(PDF)][https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=8954837]
+Bayesian Spatial Kernel Smoothing for Scalable Dense Semantic Mapping [(PDF)](https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=8954837)
 ```
 @ARTICLE{gan2019bayesian,
 author={L. {Gan} and R. {Zhang} and J. W. {Grizzle} and R. M. {Eustice} and M. {Ghaffari}},
