@@ -108,6 +108,12 @@ We utilize data and code from:
 ## Reference
 If you find our work useful in your research work, consider citing [our paper]
 ```
+@ARTICLE{wilson2022convolutional,
+  title={Convolutional Bayesian Kernel Inference for 3D Semantic Mapping},
+  author={Wilson, Joey and Fu, Yuewei and Zhang, Arthur and Song, Jingyu and Capodieci, Andrew and Jayakumar, Paramsothy and Barton, Kira and Ghaffari, Maani},
+  journal={arXiv preprint arXiv:2209.10663},
+  year={2022}
+}
 ```
 Bayesian Spatial Kernel Smoothing for Scalable Dense Semantic Mapping ([PDF](https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=8954837))
 ```
