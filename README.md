@@ -1,5 +1,5 @@
 # NeuralBKI
-Welcome! This repository contains all software used to create the Bayesian Kernel Inference Neural Network.
+Welcome! This repository contains all software used to create the Convolutional Bayesian Kernel Inference Neural Network.
 <p align="center">
  <img width="600" src="https://user-images.githubusercontent.com/91337470/191110565-cc98d66e-43a9-4b8e-8b63-e657fd899a1f.gif">
 </p>
@@ -36,18 +36,18 @@ conda activate NeuralBKI
 
 #### Datasets
 * KittiOdometry 
-  * We preprocessed the Kitti Odometry following [Yang et al.](https://github.com/shichaoy/semantic_3d_mapping/tree/master/preprocess_data#readme). We use [ELAS](https://www.cvlibs.net/software/libelas/) to generated depth images from Kitti Odometry dataset's stereo images. The semantic segmentation of the images are from a [Dilation Network](https://github.com/fyu/dilation). Then using the depth images and semantic segmentation, 3D point clouds can be generated from the image projections.
+  * We preprocessed the Kitti Odometry following [Yang et al.](https://github.com/shichaoy/semantic_3d_mapping/tree/master/preprocess_data#readme). We use [ELAS](https://www.cvlibs.net/software/libelas/) to generate depth images from Kitti Odometry dataset's stereo images. The semantic segmentation labels of the images are from [Dilation Network](https://github.com/fyu/dilation). From the depth images and semantic segmentation, 3D point clouds are generated.
   * You can download the preprocessed data [here](https://drive.google.com/file/d/15kPMLHyDNg1Pre748v6P5IdkTQ7eS8GB/view?usp=sharing).
 * SemanticKitti
   * You can download the SemanticKitti [ground truth](http://www.semantic-kitti.org/dataset.html#download) and the semantic segmentation output from [darknet53 with KNN](http://www.ipb.uni-bonn.de/html/projects/bonnetal/lidar/semantic/predictions/darknet53-knn.tar.gz)
   
 #### Training Model
-* Create/Modify yaml file in Config directory (Format should follows the provided ones)
-* Change MODEL_NAME parameter to the name of the correct yaml file in train.py
+* Create or modify yaml file in Config directory
+* Change MODEL_NAME parameter to the name of the corresponding yaml file in train.py
 * Run train.py
 
 #### Testing Model
-* Change MODEL_NAME parameter to the name of the correct yaml file in geberate result.py
+* Change MODEL_NAME parameter to the name of the corresponding yaml file in generate_result.py
 * Run generate_results.py
 
 #### YAML Parameters
@@ -87,12 +87,12 @@ conda activate NeuralBKI
 |   | ConvBKI Com. | 83.8 | 32.2 | 43.8 | 29.8 | 23.2 | 8.3  | 3.1  | 0.0 | 91.4 | 62.6 | 75.2 | 27.5 | 89.1 | 61.6 | 81.6 | 62.5 | 65.2 | 53.9 | 63.0 | 50.4 |
 
 #### Qualitative 
-* Example map produced by ConvBKI Compound on the validation set of Semantic KITTI. It can be seen that filtering out voxels with high variance improves the quality of the robotic map. 
+* Example map produced by ConvBKI Compound on the validation set of Semantic KITTI. Filtering out voxels with high variance improves the visual quality of the robotic map. 
 <p align="center">
  <img width="600" alt="Diagram" src="https://user-images.githubusercontent.com/91337470/191287167-dd1e67c5-2f0c-4bba-bd2a-d7f47e2aedaa.png">
 </p>
 
-* Illustration of kernels learned by ConvBKI on the road and pole semantic classes
+* Illustration of kernels learned by ConvBKI on the road and pole semantic classes. The network learns that the pole class is tall while the road class is wide.
 <p align="center">
  <img width="600" alt="Diagram" src="https://user-images.githubusercontent.com/91337470/191287635-10ff78ce-c8ae-4044-a241-c1db252801d8.png">
 </p>
