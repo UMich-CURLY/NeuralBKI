@@ -10,7 +10,7 @@ Welcome! This repository contains all software used to create the Bayesian Kerne
  - [Use NeuralBKI](#use-neuralbki)
    - [Dependencies](#dependencies)
    - [Datasets](#datasets)
-   - [Training/Testing](#Training Model)
+   - [Training/Testing](#Training-Model)
  - [Results](#results)
    - [KittiOdometry](#kittiodom)
    - [SemanticKITTI](#semantickitti)
