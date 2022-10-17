@@ -106,7 +106,7 @@ We utilize data and code from:
 - [5] [darknet53 with KNN](https://github.com/PRBonn/lidar-bonnetal)
 
 ## Reference
-If you find our work useful in your research work, consider citing [our paper]
+If you find our work useful in your research work, consider citing [our paper](https://arxiv.org/abs/2209.10663)
 ```
 @ARTICLE{wilson2022convolutional,
   title={Convolutional Bayesian Kernel Inference for 3D Semantic Mapping},
