@@ -41,6 +41,7 @@ conda activate NeuralBKI
   * kitti_odometry.yml file is located in Config directory. data_dir should be the location of the KittiOdometry dataset. 
 * SemanticKitti
   * You can download the SemanticKitti [ground truth](http://www.semantic-kitti.org/dataset.html#download) and the semantic segmentation output from [darknet53 with KNN](http://www.ipb.uni-bonn.de/html/projects/bonnetal/lidar/semantic/predictions/darknet53-knn.tar.gz)
+  * Move the semantic segmentation output into a directory named predictions_darknet for each seqeunce.
   * semantic_kitti.yml file is located in Config directory. data_dir should be the location of the SemanticKitti dataset. 
   
 #### Training Model
