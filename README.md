@@ -44,7 +44,7 @@ conda activate NeuralBKI
   * semantic_kitti.yml file is located in Config directory. data_dir should be the location of the SemanticKitti dataset. 
   
 #### Training Model
-* Create or modify yaml file in Config directory (ConvBKI_* are specific model yamel file and kitti_odometry.yml, semantic_kitti.yml are the dataset yaml files)
+* Create or modify yaml file in Config directory (ConvBKI_* are specific model yaml file and kitti_odometry.yml, semantic_kitti.yml are the dataset yaml files)
 * Change MODEL_NAME parameter to the name of the corresponding yaml file in train.py
 * Run train.py
 
