@@ -38,11 +38,13 @@ conda activate NeuralBKI
 * KittiOdometry 
   * We preprocessed the Kitti Odometry following [Yang et al.](https://github.com/shichaoy/semantic_3d_mapping/tree/master/preprocess_data#readme). We use [ELAS](https://www.cvlibs.net/software/libelas/) to generate depth images from Kitti Odometry dataset's stereo images. The semantic segmentation labels of the images are from [Dilation Network](https://github.com/fyu/dilation). From the depth images and semantic segmentation, 3D point clouds are generated.
   * You can download the preprocessed data [here](https://drive.google.com/file/d/15kPMLHyDNg1Pre748v6P5IdkTQ7eS8GB/view?usp=sharing).
+  * kitti_odometry.yml file is located in Config directory. data_dir should be the location of the KittiOdometry dataset. 
 * SemanticKitti
   * You can download the SemanticKitti [ground truth](http://www.semantic-kitti.org/dataset.html#download) and the semantic segmentation output from [darknet53 with KNN](http://www.ipb.uni-bonn.de/html/projects/bonnetal/lidar/semantic/predictions/darknet53-knn.tar.gz)
+  * semantic_kitti.yml file is located in Config directory. data_dir should be the location of the SemanticKitti dataset. 
   
 #### Training Model
-* Create or modify yaml file in Config directory
+* Create or modify yaml file in Config directory (ConvBKI_* are specific model yamel file and kitti_odometry.yml, semantic_kitti.yml are the dataset yaml files)
 * Change MODEL_NAME parameter to the name of the corresponding yaml file in train.py
 * Run train.py
 
