@@ -1,6 +1,5 @@
 num_classes: 11
-# data_dir: "/home/jason/kitti_odometry"
-data_dir: "/mnt/data/kitti_odometry"
+data_dir: "/home/jason/kitti_odometry"
 
 ignore_labels: [255]
 

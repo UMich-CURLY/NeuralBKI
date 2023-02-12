@@ -1,6 +1,5 @@
 num_classes: 20
-#data_dir: "/home/jason/Data/kitti"
-data_dir: "/mnt/data/kitti"
+data_dir: "/home/jason/Data/kitti"
 ignore_labels: [0]
 
 SPLIT_SEQUENCES: {
