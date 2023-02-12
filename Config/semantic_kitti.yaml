@@ -1,6 +1,13 @@
 num_classes: 20
-data_dir: "/home/jason/Data/kitti"
+#data_dir: "/home/jason/Data/kitti"
+data_dir: "/mnt/data/kitti"
 ignore_labels: [0]
+
+SPLIT_SEQUENCES: {
+    "train": ["00", "01", "02", "03", "04", "05", "06", "07", "09", "10"],
+    "val": ["08"],
+    "test": ["11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21"]
+}
 
 # This file is covered by the LICENSE file in the root of this project.
 labels: 
@@ -38,6 +45,7 @@ labels:
   257: "moving-bus"
   258: "moving-truck"
   259: "moving-other-vehicle"
+
 colors: # bgr
   0: [0, 0, 0]
   1: [245, 245, 245]
@@ -59,6 +67,7 @@ colors: # bgr
   17: [150, 240, 80]
   18: [255, 240, 150]
   19: [255, 0, 0]
+
 content: # as a ratio with the total number of points
   0: 0.018889854628292943
   1: 0.0002937197336781505

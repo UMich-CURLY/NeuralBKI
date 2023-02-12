@@ -1,7 +1,3 @@
-## Maintainer: Jingyu Song #####
-## Contact: jingyuso@umich.edu #####
-
-
 import os
 import numpy as np
 # from utils import laserscan
@@ -12,13 +8,10 @@ import torch
 import math
 from scipy.spatial.transform import Rotation as R
 
-config_file = os.path.join('Config/semantic_kitti.yaml')
+config_file = os.path.join('Config/kitti_odometry.yaml')
 kitti_config = yaml.safe_load(open(config_file, 'r'))
-# print(kitti_config['content'])
-# print(remapdict)
+SPLIT_SEQUENCES = kitti_config["SPLIT_SEQUENCES"]
 
-# LABELS_REMAP = np.array(LABE)
-# print(type(LABELS_REMAP))
 
 def grid_ind(input_pc, labels, min_bound, max_bound, grid_size, voxel_sizes):
     '''
@@ -39,13 +32,6 @@ def grid_ind(input_pc, labels, min_bound, max_bound, grid_size, voxel_sizes):
     clipped_inds = np.clip(grid_inds, np.zeros_like(maxes), maxes)
 
     return clipped_inds, labels, valid_xyz
-
-# TODO: Load this from YAML
-SPLIT_SEQUENCES = {
-    "train": ["00"], 
-    "val": ["07"], 
-    "test": ["data_kitti_15"] 
-}
 
 
 class KittiOdomDataset(Dataset):
@@ -106,6 +92,7 @@ class KittiOdomDataset(Dataset):
         self._num_frames_scene = []
         self._frames_list_label = []
         self._seqs = SPLIT_SEQUENCES[self.split]
+        self._scene_id = []
 
         for seq in self._seqs:
             velodyne_dir = os.path.join(self._directory, seq, 'training/pointcloud')
@@ -116,6 +103,7 @@ class KittiOdomDataset(Dataset):
                 preds_dir = os.path.join(self._directory, seq, 'training/predictions')
 
             self._num_frames_scene.append(len(os.listdir(label_dir)))
+            self._scene_id += [seq] * len(os.listdir(velodyne_dir))
             frames_list = [os.path.splitext(filename)[0] for filename in sorted(os.listdir(velodyne_dir))]
             
             frames_list_label = [os.path.splitext(filename)[0] for filename in sorted(os.listdir(label_dir))]
@@ -218,7 +206,6 @@ class KittiOdomDataset(Dataset):
                     points = np.dot(relative_pose[:3, :3], points.T).T + relative_pose[:3, 3]
 
                 if self.from_continuous:
-                    # labels = np.fromfile(self._pred_list[i], dtype=np.float32).reshape((-1, self.num_classes))
                     labels = np.fromfile(self._pred_list[i], dtype=np.uint8).reshape((-1, self.num_classes))
                     labels = (labels / 255).astype(np.float32)
                     if not self.to_continuous:
@@ -240,11 +227,6 @@ class KittiOdomDataset(Dataset):
                     temp_gt_labels = temp_gt_labels[grid_point_mask]
                     labels = labels[grid_point_mask,:]
 
-                    # Remove zero labels
-                    # void_mask = temp_gt_labels != 0
-                    # points = points[void_mask, :]
-                    # temp_gt_labels = temp_gt_labels[void_mask]
-                    # labels = labels[void_mask,:]
 
                     # Remove ignored classes (sky, person, bicycle)
                     ignored_classes = np.all((temp_gt_labels != 7, temp_gt_labels != 8, temp_gt_labels != 10), axis=0)
@@ -264,10 +246,6 @@ class KittiOdomDataset(Dataset):
                         labels_t = np.argmax(labels, axis=1).reshape((-1, 1)).astype(np.uint8)
                     else:
                         labels_t = labels
-                    # void_mask = labels_t != 0
-                    # void_mask = void_mask.squeeze()
-                    # points = points[void_mask, :]
-                    # labels = labels[void_mask, :]
 
                     # Remove ignored classes (sky, person, bicycle)
                     ignored_classes = np.all((labels_t != 7,labels_t != 8,labels_t != 10), axis=0).squeeze()
@@ -325,7 +303,6 @@ class KittiOdomDataset(Dataset):
             if get_gt:
                 gt_labels = np.fromfile(self._label_list[frame_id], dtype=np.uint8).reshape((-1))
             if self.from_continuous:
-                # pred_labels = np.fromfile(self._pred_list[frame_id], dtype=np.float32).reshape((-1, self.num_classes))
                 pred_labels = np.fromfile(self._pred_list[frame_id_2], dtype=np.uint8).reshape((-1, self.num_classes))
                 pred_labels = (pred_labels / 255).astype(np.float32)
                 if not self.to_continuous:
@@ -341,23 +318,23 @@ class KittiOdomDataset(Dataset):
             pred_labels = pred_labels[grid_point_mask, :]
 
             # Remove ignored classes (sky, person, bicycle)
-            ignored_classes = np.all((gt_labels != 7,gt_labels != 8,gt_labels != 10), axis=0).squeeze()
-            
-            points = points[ignored_classes, :]
-            pred_labels = pred_labels[ignored_classes, :]
-            gt_labels = gt_labels[ignored_classes]
+            if get_gt:
+                ignored_classes = np.all((gt_labels != 7,gt_labels != 8,gt_labels != 10), axis=0).squeeze()
+                
+                points = points[ignored_classes, :]
+                pred_labels = pred_labels[ignored_classes, :]
+                gt_labels = gt_labels[ignored_classes]
+            else:
+                ignored_classes = np.all((pred_labels != 7,pred_labels != 8,pred_labels != 10), axis=0).squeeze()
+                
+                points = points[ignored_classes, :]
+                pred_labels = pred_labels[ignored_classes, :]
 
-            # # Remove zero labels
-            # if get_gt:
-            #     void_mask = gt_labels != 0
-            #     points = points[void_mask, :]
-            #     gt_labels = gt_labels[void_mask]
-            #     pred_labels = pred_labels[void_mask, :]
 
 
-            scene_id = 0
+
+            scene_id = self._scene_id[idx]
             if get_gt:
                 return global_pose, points, pred_labels, gt_labels.astype(np.uint8).reshape(-1, 1), scene_id, frame_id
             else:
                 return global_pose, points, pred_labels, None, scene_id, frame_id
-            #return global_pose, points, pred_labels.astype(np.uint8).reshape(-1, 1), gt_labels.astype(np.uint8).reshape(-1, 1), scene_id, frame_id

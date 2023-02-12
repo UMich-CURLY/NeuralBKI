@@ -10,7 +10,7 @@ from_continuous: False
 to_continuous: False
 pred_path: "predictions_darknet"
 train:
-  B: 4
+  B: 2
   num_epochs: 5
   lr: 0.007
   BETA1: 0.9
@@ -35,6 +35,6 @@ ell: 0.5
 seed: 42
 
 num_frames: 10
-num_workers: 10
+num_workers: 4
 
 debug_mode: False

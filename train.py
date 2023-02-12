@@ -6,6 +6,7 @@ import yaml
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 import numpy as np
+from tqdm import tqdm
 
 # Torch imports
 import torch
@@ -22,7 +23,7 @@ from Data.Rellis3D import Rellis3dDataset
 from Data.SemanticKitti import KittiDataset
 from Data.KittiOdometry import KittiOdomDataset
 
-MODEL_NAME = "ConvBKI_PerClass_Compound"
+MODEL_NAME = "ConvBKI_Single"
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print("device is ", device)
 print("Model is", MODEL_NAME)
@@ -49,7 +50,12 @@ FROM_CONT = model_params["from_continuous"]
 TO_CONT = model_params["to_continuous"]
 PRED_PATH = model_params["pred_path"]
 
+time_stamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+
 if not os.path.exists(MODEL_RUN_DIR):
+    WEIGHTS_DIR = os.path.join("Models", "Weights")
+    if os.path.exists(WEIGHTS_DIR):
+        MODEL_RUN_DIR = MODEL_RUN_DIR + "_" + time_stamp
     os.makedirs(MODEL_RUN_DIR)
 
 # Data Parameters
@@ -67,9 +73,8 @@ epsilon_w = 1e-5  # eps to avoid zero division
 # TODO: Try counting for seq 4, ablation studies on seq 4
 weights = np.zeros(class_frequencies.shape)
 weights[1:] = (1 / np.log(class_frequencies[1:] + epsilon_w) )
-weights = torch.from_numpy(weights).to(dtype=FLOAT_TYPE, device=device)
+weights = torch.from_numpy(weights).to(dtype=FLOAT_TYPE, device=device, non_blocking=True)
 criterion = nn.NLLLoss(weight=weights, ignore_index=0)
-# pdb.set_trace()
 scenes = [ s for s in sorted(os.listdir(TRAIN_DIR)) if s.isdigit() ]
 
 # Load model
@@ -105,15 +110,16 @@ if dataset == "kitti_odometry":
                           num_frames=NUM_FRAMES, remap=False, use_aug=False, data_split="val", from_continuous=FROM_CONT,
                           to_continuous=TO_CONT, num_classes=model_params["num_classes"])
 
-dataloader_train = DataLoader(train_ds, batch_size=B, shuffle=True, collate_fn=train_ds.collate_fn, num_workers=NUM_WORKERS)
-dataloader_val = DataLoader(val_ds, batch_size=B, shuffle=False, collate_fn=val_ds.collate_fn, num_workers=NUM_WORKERS)
+dataloader_train = DataLoader(train_ds, batch_size=B, shuffle=True, collate_fn=train_ds.collate_fn, num_workers=NUM_WORKERS, pin_memory=True)
+dataloader_val = DataLoader(val_ds, batch_size=B, shuffle=False, collate_fn=val_ds.collate_fn, num_workers=NUM_WORKERS, pin_memory=True)
 
 trial_dir = MODEL_RUN_DIR
 save_dir = os.path.join("Models", "Weights", SAVE_NAME)
 if not DEBUG_MODE:
     if os.path.exists(save_dir):
-        print("Error: path already exists")
-        exit()
+        save_dir_before = save_dir
+        save_dir = save_dir + "_" + time_stamp
+        print("Pretrained model already exists at: {}, the new trained model will be saved at: {} \n".format(save_dir_before, save_dir))
 
 if not os.path.exists(trial_dir):
     os.makedirs(trial_dir)
@@ -148,7 +154,7 @@ def semantic_loop(dataloader, epoch, train_count=None, training=False):
     all_unions = np.zeros(NUM_CLASSES) + 1e-6  # SMOOTHING
     next_map = MarkerArray()
 
-    for points, points_labels, gt_labels in dataloader:
+    for points, points_labels, gt_labels in tqdm(dataloader):
         batch_gt = torch.zeros((0, 1), device=device, dtype=LABEL_TYPE)
         batch_preds = torch.zeros((0, NUM_CLASSES), device=device, dtype=FLOAT_TYPE)
 
@@ -160,18 +166,17 @@ def semantic_loop(dataloader, epoch, train_count=None, training=False):
                 pc_np = np.vstack(np.array(points[b][:-1]))
                 labels_np = np.vstack(np.array(points_labels[b][:-1]))
             else:
-                pc_np = np.vstack(np.array(points[b]))
-                labels_np = np.vstack(np.array(points_labels[b]))
+                pc_np = np.vstack(np.array(points[b], dtype=object))
+                labels_np = np.vstack(np.array(points_labels[b], dtype=object))
             labeled_pc = np.hstack((pc_np, labels_np))
 
             if labeled_pc.shape[0] == 0:  # Zero padded
                 print("Something is very wrong!")
                 exit()
 
-            labeled_pc_torch = torch.from_numpy(labeled_pc).to(device=device)
-            measure_inf_time(model, labeled_pc_torch)
+            labeled_pc_torch = torch.from_numpy(labeled_pc).to(device=device, non_blocking=True)
             preds = model(current_map, labeled_pc_torch)
-            gt_sem_labels = torch.from_numpy(gt_labels[b]).to(device=device)
+            gt_sem_labels = torch.from_numpy(gt_labels[b]).to(device=device, non_blocking=True)
 
             if DEBUG_MODE:
                 grid_params = model_params["test"]["grid_params"]
@@ -184,7 +189,7 @@ def semantic_loop(dataloader, epoch, train_count=None, training=False):
                 except:
                     exit("Publishing broke")
 
-            last_pc_torch = torch.from_numpy(points[b][-1]).to(device=device)
+            last_pc_torch = torch.from_numpy(points[b][-1]).to(device=device, non_blocking=True)
             sem_preds = points_to_voxels_torch(preds, last_pc_torch,
                                                min_bound_torch, grid_dims_torch, voxel_sizes_torch)
 
@@ -206,11 +211,12 @@ def semantic_loop(dataloader, epoch, train_count=None, training=False):
         loss = criterion(torch.log(batch_preds), batch_gt.long())
 
         if training:
-            if model.compound:
-                print("Z:", model.ell_z)
-                print("H:", model.ell_h)
-            else:
-                print(model.ell)
+            if DEBUG_MODE:
+                if model.compound:
+                    print("Z:", model.ell_z)
+                    print("H:", model.ell_h)
+                else:
+                    print(model.ell)
             loss.backward()
             optimizer.step()
 
@@ -258,10 +264,12 @@ def save_filter(model, save_path):
     torch.save(filters, save_path)
 
 
+print("Evaluation on the default kernel:")
+
 for epoch in range(EPOCH_NUM):
     # Save filters before any training
     if not DEBUG_MODE:
-        save_filter(model, os.path.join("Models", "Weights", SAVE_NAME, "filters" + str(epoch) + ".pt"))
+        save_filter(model, os.path.join(save_dir, "filters" + str(epoch) + ".pt"))
 
     # Validation
     model.eval()
@@ -278,6 +286,5 @@ epoch = EPOCH_NUM
 model.eval()
 with torch.no_grad():
     semantic_loop(dataloader_val, epoch, training=False)
-save_filter(model, os.path.join("Models", "Weights", SAVE_NAME, "filters" + str(epoch) + ".pt"))
-
+save_filter(model, os.path.join(save_dir, "filters" + str(epoch) + ".pt"))
 writer.close()

@@ -1,6 +1,14 @@
 num_classes: 11
-data_dir: "/home/jason/kitti_odometry"
+# data_dir: "/home/jason/kitti_odometry"
+data_dir: "/mnt/data/kitti_odometry"
+
 ignore_labels: [255]
+
+SPLIT_SEQUENCES: {
+    "train": ["00"], 
+    "val": ["07"], 
+    "test": ["data_kitti_15"] 
+}
 
 class_counts:
   0: 9269313

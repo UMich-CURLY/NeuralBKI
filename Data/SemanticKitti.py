@@ -1,7 +1,3 @@
-## Maintainer: Jingyu Song #####
-## Contact: jingyuso@umich.edu #####
-
-
 import os
 import numpy as np
 # from utils import laserscan
@@ -15,12 +11,10 @@ from scipy.spatial.transform import Rotation as R
 config_file = os.path.join('Config/semantic_kitti.yaml')
 kitti_config = yaml.safe_load(open(config_file, 'r'))
 remapdict = kitti_config["learning_map"]
-# print(kitti_config['content'])
-# print(remapdict)
 LABELS_REMAP = kitti_config["learning_map"]
 LABEL_INV_REMAP = kitti_config["learning_map_inv"]
-# LABELS_REMAP = np.array(LABE)
-# print(type(LABELS_REMAP))
+SPLIT_SEQUENCES = kitti_config["SPLIT_SEQUENCES"]
+
 
 def grid_ind(input_pc, labels, min_bound, max_bound, grid_size, voxel_sizes):
     '''
@@ -42,13 +36,6 @@ def grid_ind(input_pc, labels, min_bound, max_bound, grid_size, voxel_sizes):
 
     return clipped_inds, labels, valid_xyz
 
-# TODO: Load this from YAML
-SPLIT_SEQUENCES = {
-    # "train": ["00", "01", "02", "03", "04", "05", "06", "07", "09", "10"],
-    "train": ["08"],
-    "val": ["08"],
-    "test": ["11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21"]
-}
 
 
 def unpack(compressed):

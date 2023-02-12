@@ -4,12 +4,12 @@ load_epoch: 4
 map_method: "global"
 visualize: False
 meas_result: True
-result_split: "train"
+result_split: "val"
 from_continuous: True
 to_continuous: True
 pred_path: "pred_probability"
 train:
-  B: 8
+  B: 2
   num_epochs: 5
   lr: 0.05
   BETA1: 0.9
@@ -34,6 +34,6 @@ ell: 0.3
 seed: 42
 
 num_frames: 4
-num_workers: 16
+num_workers: 4
 
 debug_mode: True

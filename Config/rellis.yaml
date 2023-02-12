@@ -1,6 +1,6 @@
 num_classes: 15
 data_dir: "/home/jason/Data/Rellis-3D"
-ignore_labels: = [0]
+ignore_labels: [0]
 LABELS_REMAP:
   0: 0 #"void"
   1: 0 #"dirt"
