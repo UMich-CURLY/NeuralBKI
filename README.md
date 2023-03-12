@@ -28,7 +28,7 @@ Welcome! This repository contains all software used to create the Convolutional 
 * [Pytorch](https://pytorch.org/get-started/locally/) - we tested on PyTorch 1.10 and 1.8.2
 * [ROS](http://wiki.ros.org/noetic) - we used ros noetic for map visualization  
 
-We also provide an environment.yml which you can use to create a conda environment
+We also provide an environment.yml which you can use to create a conda environment (This is only tested on Ubuntu 20)
 ```
 conda env create -f environment.yml
 conda activate NeuralBKI
