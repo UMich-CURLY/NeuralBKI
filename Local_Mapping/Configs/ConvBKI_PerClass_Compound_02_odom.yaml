@@ -2,8 +2,8 @@ dataset: "kitti_odometry"
 save_dir: "ConvBKI_Com_02_Odom"
 load_epoch: 1
 map_method: "global"
-visualize: True
-meas_result: False
+visualize: False
+meas_result: True
 gen_preds: False
 result_split: "train"
 from_continuous: False
@@ -19,14 +19,16 @@ train:
   remove_last: False
   opt: "Adam" 
   grid_params:
-    grid_size: [400.0, 400.0, 50.0]
+    grid_size: [400, 400, 50]
     min_bound: [-40.0, -40.0, -5.0] #[-40.0, -40.0, -2.65]
     max_bound: [40.0, 40.0, 5.0] #[40.0, 40.0, 3.75]
+    voxel_sizes: [0.2, 0.2, 0.2]
 test:
   grid_params:
-    grid_size: [401.0, 401.0, 51.0] #[512.0, 512.0, 32.0]
+    grid_size: [401, 401, 51] #[512.0, 512.0, 32.0]
     min_bound: [-40.1, -40.1, -5.1]
     max_bound: [40.1, 40.1, 5.1]
+    voxel_sizes: [0.2, 0.2, 0.2]
 filter_size: 5
 kernel: "sparse"
 compound: True
@@ -38,3 +40,5 @@ num_frames: 10
 num_workers: 4
 
 debug_mode: False
+
+num_classes: 11

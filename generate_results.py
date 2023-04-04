@@ -30,8 +30,9 @@ from Data.SemanticKitti import KittiDataset
 from Data.KittiOdometry import KittiOdomDataset
 import time
 
-MODEL_NAME = "ConvBKI_Single"
+# MODEL_NAME = "ConvBKI_Single"
 # MODEL_NAME = "ConvBKI_Single_02_odom"
+MODEL_NAME = "ConvBKI_PerClass_Compound_02_odom"
 
 print("Model is:", MODEL_NAME)
 
@@ -123,7 +124,8 @@ map_object = GlobalMap(
     model_params["filter_size"], # Filter size
     num_classes=NUM_CLASSES,
     ignore_labels = ignore_labels, # Classes
-    device=device # Device
+    device=device, # Device
+    delete_time = 1e6
 )
 
 if VISUALIZE:
@@ -146,7 +148,9 @@ total_int_seg = torch.zeros(map_object.num_classes, device=device)
 total_un_bki = torch.zeros(map_object.num_classes, device=device)
 total_un_seg = torch.zeros(map_object.num_classes, device=device)
 
-total_t = 0.0
+# total_t = 0.0
+time_list = []
+
 for idx in tqdm(range(len(test_ds))):
     with torch.no_grad():
         # Load data
@@ -179,7 +183,8 @@ for idx in tqdm(range(len(test_ds))):
         labeled_pc = np.hstack((points, pred_labels))
         labeled_pc_torch = torch.from_numpy(labeled_pc).to(device=device, non_blocking=True)
         map_object.update_map(labeled_pc_torch)
-        total_t += time.time() - start_t
+        
+        time_list.append(time.time() - start_t)
 
         current_scene = scene_id
         current_frame_id = frame_id
@@ -291,6 +296,10 @@ for idx in tqdm(range(len(test_ds))):
 
     frame_num += 1
 
+time_file = open("./time.txt", "w")
+for t in time_list:
+    time_file.write(str(t) + "\n")
+time_file.close()
 
 if MEAS_RESULT:
     print("Final results:")
