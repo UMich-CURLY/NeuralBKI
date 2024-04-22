@@ -37,7 +37,7 @@ conda activate NeuralBKI
 #### Datasets
 * KittiOdometry 
   * We preprocessed the Kitti Odometry following [Yang et al.](https://github.com/shichaoy/semantic_3d_mapping/tree/master/preprocess_data#readme). We use [ELAS](https://www.cvlibs.net/software/libelas/) to generate depth images from Kitti Odometry dataset's stereo images. The semantic segmentation labels of the images are from [Dilation Network](https://github.com/fyu/dilation). From the depth images and semantic segmentation, 3D point clouds are generated.
-  * You can download the preprocessed data [here](https://drive.google.com/file/d/15kPMLHyDNg1Pre748v6P5IdkTQ7eS8GB/view?usp=sharing).
+  * You can download the preprocessed data [here](https://curly-dataset-public.s3.us-east-2.amazonaws.com/ConvBKI/kitti_odometry/kitti_odometry.zip).
   * kitti_odometry.yml file is located in Config directory. data_dir should be the location of the KittiOdometry dataset. 
 * SemanticKitti
   * You can download the SemanticKitti [ground truth](http://www.semantic-kitti.org/dataset.html#download) and the semantic segmentation output from [darknet53 with KNN](http://www.ipb.uni-bonn.de/html/projects/bonnetal/lidar/semantic/predictions/darknet53-knn.tar.gz)
