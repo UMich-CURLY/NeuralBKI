@@ -1,9 +1,12 @@
 # NeuralBKI
-Welcome! This repository contains all software used to create the Convolutional Bayesian Kernel Inference Neural Network.
+Welcome! This repository contains all software used to create the Convolutional Bayesian Kernel Inference Neural Network (ICRA '23). For ROS implementation, see [https://github.com/UMich-CURLY/BKI_ROS](https://github.com/UMich-CURLY/BKI_ROS).
 <p align="center">
  <img width="600" src="https://user-images.githubusercontent.com/91337470/191110565-cc98d66e-43a9-4b8e-8b63-e657fd899a1f.gif">
 </p>
 
+
+## Update
+An extension with ROS implementation and a sliding window approach from our updated TRO '24 paper can be found in [https://github.com/UMich-CURLY/BKI_ROS](https://github.com/UMich-CURLY/BKI_ROS). This code contains the initial experiments validating the idea, while BKI_ROS is more useful to understand how to fit the idea into a real-time solution. 
 
 ## Table of Contents
  - [Network](#network)
@@ -88,6 +91,8 @@ conda activate NeuralBKI
 | Test | Da.-kNN      | 82.4 | 26.0 | 34.6 | 21.6 | 18.3 | 6.7  | 2.7  | 0.5 | 91.8 | 65.0 | 75.1 | 27.7 | 87.4 | 58.6 | 80.5 | 55.1 | 64.8 | 47.9 | 55.9 | 47.5 |
 |   | S-BKI        | 83.8 | 30.6 | 43.0 | 26.0 | 19.6 | 8.5  | 3.4  | 0.0 | 92.6 | 65.3 | 77.4 | 30.1 | 89.7 | 63.7 | 83.4 | 64.3 | 67.4 | 58.6 | 67.1 | 51.3 |
 |   | ConvBKI Com. | 83.8 | 32.2 | 43.8 | 29.8 | 23.2 | 8.3  | 3.1  | 0.0 | 91.4 | 62.6 | 75.2 | 27.5 | 89.1 | 61.6 | 81.6 | 62.5 | 65.2 | 53.9 | 63.0 | 50.4 |
+
+Note that for SemanticKITTI, results vary significantly (4%) if using the training or validation set. This occurs because the network has very limited error on the training set, so the optimal solution is no kernel inference, i.e. reverting to the semantic counting sensor model. For our experiments on Semantic KITI, we overfit to the validation set, and measure a significant improvement on the test set as a result. This is different from KITTI Odometry, which is trained on the training set, as the neural network produces lots of noise. An interesting extension is studying training approaches such as witholding some input so spatial smoothing is more beneficial, something we found effective in preliminary experiments. 
 
 #### Qualitative 
 * Example map produced by ConvBKI Compound on the validation set of Semantic KITTI. Filtering out voxels with high variance improves the visual quality of the robotic map. 
